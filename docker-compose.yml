@@ -1,0 +1,30 @@
+# Self-hosted NestJS Observe — local development stack.
+#
+#   docker compose up -d
+#   bun install && bun run dev
+#
+# The only required service is Postgres. The server needs no other state: no
+# Redis, no queue, no object store. That is deliberate — a collector that needs
+# a stack to boot is one nobody self-hosts.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: observe-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: observe
+      POSTGRES_PASSWORD: observe
+      POSTGRES_DB: observe
+    ports:
+      - "5433:5432"
+    volumes:
+      - observe-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U observe -d observe"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  observe-pgdata:

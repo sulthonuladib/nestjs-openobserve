@@ -1,0 +1,20 @@
+{
+  // The vendored SDK in `repos/` is read-only reference material for agents and
+  // humans, not application code. Keep it out of search, file watching,
+  // auto-imports and the explorer so nobody wires an import to it by accident
+  // (the runtime forbids it; see AGENTS.md).
+  "typescript.preferences.autoImportFileExcludePatterns": ["repos/**"],
+  "javascript.preferences.autoImportFileExcludePatterns": ["repos/**"],
+
+  "files.exclude": {
+    "repos/**": true
+  },
+
+  "files.watcherExclude": {
+    "repos/**": true
+  },
+
+  "search.exclude": {
+    "repos/**": true
+  }
+}

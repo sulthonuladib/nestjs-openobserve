@@ -26,5 +26,9 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  // `repos/` is a vendored git subtree: read-only reference material for agents
+  // and humans, never compiled, never type-checked, never bundled.
+  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "dist", "repos", "**/drizzle/**"]
 }

@@ -1,15 +1,26 @@
 {
-  "name": "nestjs-openobserve",
-  "module": "index.ts",
-  "type": "module",
+  "name": "nestjs-observe-selfhosted",
+  "version": "0.0.0",
   "private": true,
+  "type": "module",
+  "license": "MIT",
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
-    "typecheck": "bun check"
+    "dev": "bun --hot apps/server/src/index.ts",
+    "dev:web": "bun --filter web dev",
+    "build": "bun run build:web && bun run build:server",
+    "build:server": "bun build apps/server/src/index.ts --target=bun --outdir=dist/server --minify",
+    "build:web": "bun --filter web build",
+    "compile": "bun build apps/server/src/index.ts --compile --outfile dist/nestjs-observe",
+    "start": "bun apps/server/src/index.ts",
+    "typecheck": "bun run --filter '*' typecheck && tsc --noEmit -p tsconfig.json",
+    "typecheck:root": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
+    "test:conformance": "bun test test/conformance",
+    "db:migrate": "bun apps/server/src/db/migrate.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
+    "@types/bun": "latest",
     "typescript": "^7"
   }
 }

@@ -1,0 +1,29 @@
+# The vendored SDK is reference material for agents and humans. It must never
+# enter the image: it is not a build input, and shipping ~2.7 MB of somebody
+# else's source in a runtime image is both waste and a licence question.
+repos/
+
+# Dev-only
+.prompts/
+.vscode/
+.github/
+docs/
+test/
+scripts/
+**/*.md
+!README.md
+!LICENSE
+
+# Build noise
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+coverage
+*.tgz
