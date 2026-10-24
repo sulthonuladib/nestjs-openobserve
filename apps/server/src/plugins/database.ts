@@ -16,8 +16,13 @@ import { migrate } from "drizzle-orm/bun-sql/migrator";
 import { join } from "node:path";
 import * as schema from "../db/schema";
 
-/** apps/server/drizzle — `drizzle-kit generate` writes here. */
-export const MIGRATIONS_DIR = join(import.meta.dir, "..", "..", "drizzle");
+/**
+ * Where the generated SQL lives. Overridable because the container copies it to
+ * `/app/drizzle` while the bundle runs from `/app/server` — the fallback is the
+ * repo layout, `apps/server/drizzle`.
+ */
+export const MIGRATIONS_DIR =
+  process.env.OBSERVE_MIGRATIONS_DIR ?? join(import.meta.dir, "..", "..", "drizzle");
 
 export type Db = BunSQLDatabase<typeof schema>;
 /** The handle a helper may take: the pool, or a transaction on it. */

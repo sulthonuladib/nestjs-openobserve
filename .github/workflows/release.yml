@@ -1,0 +1,236 @@
+name: release
+
+# Triggered by release-please merging its version PR (which creates the tag) or
+# by pushing a tag by hand. Two artifacts per release, never an npm package:
+#   ghcr.io/<repo>:vX.Y.Z  (linux/amd64 + linux/arm64)
+#   nestjs-observe-vX.Y.Z-<platform>.tar.gz  (+ SHA256SUMS, attestations, SBOM)
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v0.1.0)'
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # create the release
+  packages: write   # push to GHCR
+  id-token: write   # provenance attestations / cosign keyless
+  attestations: write
+
+env:
+  BUN_VERSION: 1.4.3
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  version:
+    name: resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      semver: ${{ steps.v.outputs.semver }}
+    steps:
+      - id: v
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "semver=${tag#v}" >> "$GITHUB_OUTPUT"
+
+  binaries:
+    name: build ${{ matrix.platform }}
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: bun-linux-x64
+            platform: linux-x64
+          - target: bun-linux-arm64
+            platform: linux-arm64
+          - target: bun-darwin-x64
+            platform: darwin-x64
+          - target: bun-darwin-arm64
+            platform: darwin-arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build SPA
+        run: bun run build:web
+
+      - name: Compile the server into one executable
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          bun build apps/server/src/index.ts \
+            --compile \
+            --minify \
+            --target "$TARGET" \
+            --outfile dist/nestjs-observe
+          chmod +x dist/nestjs-observe
+
+      - name: Assemble the tarball
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          name="nestjs-observe-${TAG}-${PLATFORM}"
+          mkdir -p "dist/${name}"
+          cp dist/nestjs-observe "dist/${name}/nestjs-observe"
+          cp -r apps/web/dist "dist/${name}/web"
+          cp -r apps/server/drizzle "dist/${name}/drizzle"
+          cp README.md LICENSE NOTICE .env.example docker-compose.yml "dist/${name}/"
+          # A release artifact must never contain the vendored SDK.
+          if find "dist/${name}" -path '*repos*' | grep -q .; then
+            echo "::error title=repos/ leaked::the artifact contains the vendored SDK"
+            exit 1
+          fi
+          tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+          sha256sum "dist/${name}.tar.gz" > "dist/${name}.tar.gz.sha256"
+
+      - name: Attest the artifact
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarball-${{ matrix.platform }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  image:
+    name: image (multi-arch)
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # Floating tags are the convenience; the digest is the contract.
+          # `:vX.Y.Z` is immutable by policy: never re-push one.
+          tags: |
+            type=semver,pattern=v{{version}}
+            type=semver,pattern=v{{major}}.{{minor}}
+            type=semver,pattern=v{{major}}
+            type=raw,value=latest,enable=${{ !contains(needs.version.outputs.semver, '-') }}
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=NestJS Observe (self-hosted)
+            org.opencontainers.image.licenses=MIT
+
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ needs.version.outputs.semver }}
+
+      - name: Verify the vendored SDK is not in the image
+        run: |
+          set -euo pipefail
+          docker buildx build --load --platform linux/amd64 -t verify-image . >/dev/null
+          if docker run --rm --entrypoint sh verify-image -c 'ls /app' | grep -qx repos; then
+            echo "::error title=repos/ leaked::the image contains the vendored SDK"
+            exit 1
+          fi
+
+  publish:
+    name: publish release
+    needs: [version, binaries, image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tarball-*
+          merge-multiple: true
+          path: dist
+
+      - name: Checksums
+        run: |
+          cd dist && sha256sum *.tar.gz > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Create the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: ${{ needs.version.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ contains(needs.version.outputs.semver, '-') }}
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          body: |
+            ## Container
+
+            ```bash
+            docker pull ${{ env.IMAGE }}:${{ needs.version.outputs.tag }}
+            docker run -p 4319:4319 -p 4320:4320 \
+              -e OBSERVE_DATABASE_URL=postgres://user:pass@db:5432/observe \
+              ${{ env.IMAGE }}:${{ needs.version.outputs.tag }}
+            ```
+
+            Digest: `${{ needs.image.outputs.digest || 'see `docker buildx imagetools inspect`' }}`
+
+            ## Binary tarball
+
+            ```bash
+            curl -fsSLO <release asset>
+            sha256sum -c SHA256SUMS.txt
+            tar xzf nestjs-observe-${{ needs.version.outputs.tag }}-linux-x64.tar.gz
+            ./nestjs-observe-*/nestjs-observe
+            ```
+
+            Set `OBSERVE_WEB_DIR` and `OBSERVE_MIGRATIONS_DIR` to the extracted
+            `web/` and `drizzle/` directories if you run the binary from elsewhere.
+
+            ## Compatibility
+
+            - ingest API **v1**, SDK `@nestjs/observe >=0.3.17 <0.4.0`
+            - Postgres 15+
+            - upgrade supported from the previous **two** minor versions

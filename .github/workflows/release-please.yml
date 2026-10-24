@@ -1,0 +1,26 @@
+name: release-please
+
+# Conventional Commits drive the version, the changelog and the tag. Merging the
+# release PR is the release: it bumps the version, writes CHANGELOG.md and
+# creates the `vX.Y.Z` tag, which triggers `release.yml` to build and publish.
+#
+# Deliberately not changesets: this repo publishes no packages, so there is
+# nothing to version per-workspace, and one app version is the whole contract.
+# `repos/observe` is a subtree, not a workspace member, so it never appears here.
+
+on:
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

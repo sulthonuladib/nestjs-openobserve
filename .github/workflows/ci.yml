@@ -1,0 +1,113 @@
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+# One run per ref: a force-push cancels the run it superseded rather than
+# paying for both.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Postgres for the integration paths. The server needs nothing else: no Redis,
+  # no object store, no queue.
+  OBSERVE_DATABASE_URL: postgres://observe:observe@localhost:5432/observe
+  BUN_VERSION: 1.4.3
+
+jobs:
+  test:
+    name: test (bun ${{ matrix.bun }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Postgres support is a product claim, so it is tested across the
+        # versions we document rather than only the newest.
+        postgres: ['15', '16', '17']
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}-alpine
+        env:
+          POSTGRES_USER: observe
+          POSTGRES_PASSWORD: observe
+          POSTGRES_DB: observe
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U observe -d observe"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck (every workspace package, then the root)
+        run: bun run typecheck
+
+      - name: Unit + conformance tests
+        run: bun test
+
+      - name: Apply migrations
+        run: bun run --cwd apps/server db:migrate
+
+      - name: End-to-end ingest round trip
+        run: bun run scripts/smoke.ts
+
+  # The vendored gateway between our repo and @nestjs/observe is a git subtree.
+  # If it is out of date the port may be silently behind: report it, do not fail
+  # the build (the maintainer decides when to bump).
+  vendor:
+    name: vendored SDK status
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Compare vendored commit with upstream HEAD
+        run: |
+          vendored=$(git log -1 --format=%s -- repos/observe | grep -oE '[0-9a-f]{40}' | head -1)
+          upstream=$(git ls-remote https://github.com/nestjs/observe.git master | cut -f1)
+          echo "vendored: ${vendored:-unknown}"
+          echo "upstream: ${upstream}"
+          if [ -n "$vendored" ] && [ "$vendored" != "$upstream" ]; then
+            echo "::warning title=Vendored SDK is behind::repos/observe is not at $upstream. Run: git subtree pull --prefix=repos/observe https://github.com/nestjs/observe.git master --squash"
+          fi
+
+  # Explicit, because it is the one thing a release must never do.
+  no-vendored-in-artifacts:
+    name: repos/ excluded from artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: git archive must not contain repos/
+        run: |
+          git archive --format=tar HEAD > /tmp/archive.tar
+          if tar -tf /tmp/archive.tar | grep -q '^repos/'; then
+            echo "::error title=repos/ leaked::git archive included the vendored SDK. Check .gitattributes export-ignore."
+            exit 1
+          fi
+          echo "repos/ correctly excluded from git archive"
+      - name: .dockerignore must exclude repos/
+        run: |
+          grep -qx 'repos/' .dockerignore || {
+            echo "::error title=.dockerignore::repos/ is not excluded from the Docker build context"
+            exit 1
+          }
