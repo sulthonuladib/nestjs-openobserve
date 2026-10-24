@@ -181,7 +181,7 @@ Legend: **P0** must ship in v0.1 · **P1** v0.2 · **P2** v0.3+ · — removed
  SDK agent          │                                                                      │
  (untouched)        │  ┌────────────┐   ┌──────────────┐   ┌─────────────┐   ┌───────────┐  │
    │ gzip POST      │  │  ingest    │──▶│  normalizer  │──▶│   writer    │──▶│  storage  │  │
-   ├───────────────▶│  │  route     │   │  (decode,    │   │  (batched,  │   │ SQLite /  │  │
+   ├───────────────▶│  │  route     │   │  (decode,    │   │  (batched,  │   │ Postgres  │  │
    │ x-api-key      │  │  auth,     │   │   fp errors, │   │   COPY into │   │ Postgres  │  │
    │                │  │  validate, │   │   collapse,  │   │   staging,  │   │           │  │
    │                │  │  drop-filt │   │   rollup ctr)│   │   flush)    │   │           │  │
@@ -201,7 +201,11 @@ Legend: **P0** must ship in v0.1 · **P1** v0.2 · **P2** v0.3+ · — removed
                     └──────────────────────────────────────────────────────────────────────┘
 ```
 
-Single process, two Elysia app instances sharing one runtime:
+Single process, two Elysia app instances sharing one runtime. Each feature is a
+module (`apps/server/src/modules/<feature>/`: `index.ts` controller, `service.ts`
+logic, `model.ts` schemas) built as a **named Elysia plugin**, with `config`,
+`db` and `state` injected as plugins from `apps/server/src/plugins/` — so Elysia
+deduplicates them and no handler reaches for a global:
 
 - **`ingestApp`** — mounted before anything else, no session middleware, no
   cookies, no CORS work, gzip decode only. Its whole job is "accept bytes
@@ -218,14 +222,12 @@ proxy config. They can also be collapsed onto one port (`OBSERVE_SINGLE_PORT=1`)
 
 ### Why Bun + Elysia specifically
 
-- `Bun.serve` handles gzip request bodies natively (`Request` is
-  `decompress`ed transparently for `content-encoding: gzip`) and its HTTP
-  parser is the fastest mainstream JS one; ingest is a pure "read body, parse
-  JSON, insert rows" loop, so per-request overhead is the whole cost.
-- `Bun.gzipSync`/`zlib` parity for our own responses, `Bun.password` (argon2id)
-  for secrets without a native dep, `bun:sqlite` for the zero-dep default
-  deployment, `bun test` for the whole suite, `bun build --compile` for the
-  tar.gz artifact.
+- `Bun.serve`'s HTTP parser is the fastest mainstream JS one, and ingest is a
+  pure "read body, gunzip, parse JSON, insert rows" loop — per-request overhead
+  is the whole cost.
+- `Bun.gunzipSync` on the hot path, `Bun.password` (argon2id) for secrets with no
+  native dependency, `Bun.SQL` for Postgres with no `pg` in the image, `bun test`
+  for the whole suite, `bun build --compile` for the tar.gz artifact.
 - Elysia's design goal is compile-time route flattening; with the **AoT
   compiler** the hot ingest route becomes a static function. It also gives us
   Eden for end-to-end typed UI→API calls from the same TS types.
@@ -236,19 +238,29 @@ Full rationale, alternatives and risks: [`spec/tech-stack.md`](spec/tech-stack.m
 
 ## 5. Storage model
 
-Two supported engines, one schema written in a portable subset.
+**Postgres only**, modelled and migrated with **Drizzle**
+(`drizzle-orm/bun-sql` → `Bun.SQL`, no `pg` dependency). `OBSERVE_DATABASE_URL`
+is required; there is no embedded fallback.
 
-| | SQLite (`bun:sqlite`, default) | Postgres (opt-in) |
-|---|---|---|
-| Deployment | one file in the volume | `OBSERVE_DATABASE_URL` |
-| Fit | single node, ≤ ~500 ev/s sustained | horizontal read replicas, ≥ ~5k ev/s |
-| Writes | WAL, one writer; we batch in transactions of 500–2000 rows | `COPY` into unlogged staging + `INSERT … SELECT` |
-| Ops | none | the operator has one already |
+The reasoning, in one line each:
 
-Time-series tables are **append-only, partitioned by day** (SQLite: one table
-per day with `ATTACH`-free `UNION` via a view; Postgres: native
-`PARTITION BY RANGE`). Retention = `DROP` the oldest partition, which is O(1)
-and does not bloat the write path with `DELETE`.
+- This is append-heavy time series aggregated over arbitrary windows. Postgres
+  does that natively — `jsonb` + GIN for tags, `unnest … WITH ORDINALITY` for
+  histogram merges, native partitions for retention.
+- An embedded database would mean owning a second engine, its backup story and
+  its single-writer ceiling, to save the operator a container they already run.
+- One dialect means one set of queries to test, and `drizzle-typebox` can derive
+  the API's response models from the same column definitions that create the
+  tables.
+
+Conventions: `uuid` primary keys minted by the collector as **UUIDv7** (sorted by
+time, so B-tree inserts stay append-like); every timestamp is `bigint` epoch
+**milliseconds**; `jsonb` — never `json` — for anything filtered or aggregated.
+
+Time-series tables are **append-only**. `execution`, `span`, `log_entry` and
+`metric_point` convert to `PARTITION BY RANGE (started_at)` in M1; retention then
+becomes `DROP` the oldest partition, which is O(1) and never touches the write
+path with a `DELETE`.
 
 ### Core tables
 
@@ -391,7 +403,7 @@ compiled binary.
 
 | Milestone | Content | Exit criteria |
 |---|---|---|
-| **M0 — skeleton** | monorepo, Elysia ingest route accepting gzip batches, strict validation against `TELEMETRY_BATCH`, `{degraded:false}` reply, SQLite write of `execution`+`span`, `/health` | a real Nest app with the vendored SDK, `OBSERVE_ENDPOINT=http://localhost:4319`, produces rows we can `SELECT` |
+| **M0 — skeleton** | monorepo, Elysia ingest route accepting gzip batches, strict validation against `TELEMETRY_BATCH`, `{degraded:false}` reply, Postgres/Drizzle write of `execution`+`span`, `/health` | a real Nest app with the vendored SDK, `OBSERVE_ENDPOINT=http://localhost:4319`, produces rows we can `SELECT` |
 | **M1 — v0.1 "useful"** | auth, applications, operations, executions, traces, errors (grouping + source context), API keys, `/cli-link` device flow, minimal UI (overview, trace waterfall, error list) | `npx @nestjs/observe link` works against us; demo-scale data navigable |
 | **M2 — v0.2 "complete telemetry"** | logs, jobs, runtime metrics, custom metrics, releases, retention config, custom op IDs, Postgres adapter | parity with the hosted dashboard's daily-driver pages |
 | **M3 — v0.3 "SLOs & alerts"** | objectives ingestion + budgets, alerts + channels, drop filters, multi-project/envs, MCP | `@Objective()` declarations round-trip; an alert fires on a planted error |
@@ -445,7 +457,7 @@ Details, versioning rules, workflow YAML and the upgrade policy:
 |---|---|---|
 | SDK wire format changes without a version bump | silent 400s, data loss | conformance test imports the vendored contract; CI fails when a subtree bump changes it |
 | Hosted dashboard has features we cannot see (no public API) | parity gaps | REA-derived inventory, explicitly flagged `unknown`; ship on our own IA where unknown |
-| SQLite write ceiling under real traffic | ingest backpressure | batch transactions, single-writer thread, documented Postgres path, load test in M4 |
+| Ingest write amplification at volume (80+ spans/request) | Postgres under pressure | bulk `values([...])` inserts, pre-aggregated rollups, per-app sampling as config, partition + `COPY` path in M1, load test in M4 |
 | Span volume (80+ children/request) | storage blow-up | server-side `spanCollapse`-aware storage, per-app sampling as config, day partitions + rollups |
 | Removal of quota logic surprises the agent | degraded handshake misread | always `degraded:false`; recorded in the conformance test |
 | License/attribution | — | SDK is MIT: keep its copyright notice in `NOTICE`, never re-license SDK code |
