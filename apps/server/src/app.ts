@@ -26,6 +26,23 @@ import { logsModule } from "./modules/logs";
 import { cliLinkModule } from "./modules/link";
 import { linkApprovalModule } from "./modules/link/approval";
 
+/**
+ * Where the built SPA lives.
+ *
+ * Three layouts exist and all three must work without a flag:
+ *   - repo dev:        apps/server/src/app.ts  -> ../../web/dist
+ *   - bundled server:  dist/server/index.js    -> ../../web/dist (tarball root)
+ *   - container:       /app/server/index.js    -> /app/web  (OBSERVE_WEB_DIR)
+ */
+function resolveWebRoot(): string | null {
+  const candidates = [
+    process.env.OBSERVE_WEB_DIR,
+    join(import.meta.dir, "..", "..", "web", "dist"),
+    join(import.meta.dir, "..", "..", "web"),
+  ].filter((value): value is string => Boolean(value));
+  return candidates.find((candidate) => existsSync(join(candidate, "index.html"))) ?? null;
+}
+
 export interface Deps {
   readonly config: Config;
   readonly db: Db;
@@ -70,9 +87,8 @@ export function createApiApp(deps: Deps) {
 
   // The dashboard SPA, when a build is present. Registered last so API routes
   // and the ingest paths always win over the static handler.
-  const webRoot =
-    process.env.OBSERVE_WEB_DIR ?? join(import.meta.dir, "..", "..", "..", "web", "dist");
-  if (existsSync(webRoot)) {
+  const webRoot = resolveWebRoot();
+  if (webRoot) {
     app.use(staticPlugin({ assets: webRoot, prefix: "/" }));
   }
 
