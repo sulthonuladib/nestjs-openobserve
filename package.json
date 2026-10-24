@@ -18,7 +18,7 @@
     "start": "bun apps/server/src/index.ts",
     "typecheck": "bun run --filter '*' typecheck && tsc --noEmit -p tsconfig.json",
     "typecheck:root": "tsc --noEmit -p tsconfig.json",
-    "test": "bun test",
+    "test": "bun test test packages apps",
     "test:conformance": "bun test test/conformance",
     "db:migrate": "bun apps/server/src/db/migrate.ts"
   },
