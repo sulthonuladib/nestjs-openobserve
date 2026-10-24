@@ -19,7 +19,6 @@ import {
   SECTION_SHAPES,
   TELEMETRY_BATCH,
   validateBatch,
-  type FieldSpec,
   type Shape,
 } from "@observe/shared";
 import {
@@ -45,8 +44,8 @@ function normalize(shape: Shape): Record<string, unknown> {
       maxLength: spec.maxLength,
       maxItems: spec.maxItems,
       oneOf: spec.oneOf ? [...spec.oneOf].sort() : undefined,
-      shape: spec.shape ? normalize(spec.shape) : undefined,
-    } satisfies Partial<FieldSpec>;
+      shape: spec.shape ? normalize(spec.shape as Shape) : undefined,
+    };
   }
   return out;
 }
@@ -64,7 +63,7 @@ describe("wire contract", () => {
     // The SDK's own note at the top of telemetry-wire-contract.ts: `st` is
     // absent on purpose and a payload carrying it is a 400. If this ever
     // passes, either the contract changed or our port drifted.
-    const batch = sampleBatch() as Record<string, unknown>;
+    const batch = sampleBatch() as unknown as Record<string, unknown>;
     (batch.snapshots as Array<Record<string, unknown>>)[0]!.st = Date.now();
     expect(validateBatch(batch, { forbidUnknown: true }).length).toBeGreaterThan(0);
   });
