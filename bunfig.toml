@@ -1,0 +1,8 @@
+# `repos/` is a vendored git subtree (the @nestjs/observe SDK) used as read-only
+# reference. Tests there are the SDK's own and are not ours to run; only
+# `test/conformance/` imports from it, deliberately, to keep our port honest.
+[test]
+root = "."
+
+[install]
+exact = false

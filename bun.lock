@@ -5,6 +5,7 @@
     "": {
       "name": "nestjs-openobserve",
       "devDependencies": {
+        "@observe/shared": "workspace:*",
         "@types/bun": "latest",
         "typescript": "^7",
       },
