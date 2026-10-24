@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# A superseded run tells you nothing, and Renovate opens PRs in bursts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # husky's documented CI opt-out. `npm ci --ignore-scripts` would also skip it,
+  # but @swc/core has a postinstall that vitest's transform depends on.
+  HUSKY: 0
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20.19 is the engine floor - the version where require(esm) stopped
+        # being flagged. It is tested precisely because dropping below it is
+        # the regression nobody notices locally.
+        node: ["20.19", "22", "24"]
+    # The queue suites need a real Redis, and the query-span suites a real
+    # Postgres, MySQL and MongoDB. Each skips itself when its server does not
+    # answer - which, without these, would be every CI run.
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      mongo:
+        # Not mongo:8 while the runners' kernel is 6.19 to 7.0.13: MongoDB 8's
+        # TCMalloc breaks on those kernels, so mongod refuses to start there
+        # (SERVER-121912) and the job fails before a single test. 7.0 predates
+        # that allocator, and the driver suites pass on it unchanged. Back to 8
+        # once the runner image ships kernel 7.0.14 or later.
+        image: mongo:7
+        ports:
+          - 27027:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres-whisprr
+        ports:
+          - 54321:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # The lockfile is written with `legacy-peer-deps` on, and has to be read
+      # the same way: the dev tree holds ORMs and queue libraries side by side
+      # whose optional peers disagree (typeorm wants ioredis 5, bullmq runs on
+      # 6), which npm 10 refuses outright and npm 11 lets through. On this
+      # step only - the consumer installs below resolve peers strictly, since
+      # that is what someone installing the package gets.
+      - run: npm ci --legacy-peer-deps
+
+      - run: npm run lint
+
+      # The build compiles only what ships, and vitest strips types without
+      # checking them, so this is the one step that type-checks the specs.
+      - run: npm run typecheck
+
+      - run: npm run build
+
+      - run: npm test
+
+      - run: npm run test:int
+
+      # The suites above run on the newest Nest. This runs the packed SDK on
+      # the oldest major it supports, where the newer framework hooks it
+      # feature-tests do not exist - the only place a hard dependency on one
+      # of them would show.
+      #
+      # Nothing here is silenced. The first version sent every command's output
+      # to /dev/null and failed on CI with a bare exit code and no way to tell
+      # which command had produced it.
+      #
+      # The tarball is found on disk, in a directory of its own, rather than
+      # read off `npm pack`'s stdout: npm 10 runs `prepare` even under
+      # `--ignore-scripts`, and husky's "HUSKY=0 skip install" lands in
+      # whatever is being parsed - the last line, or `--json`. The scratch
+      # package is written by hand rather than by `npm init -y`, which names it
+      # after a random temp directory.
+      - name: backward compatibility with Nest 11
+        run: |
+          set -euo pipefail
+          PACKED="$(mktemp -d)"
+          npm pack --ignore-scripts --pack-destination "$PACKED"
+          TARBALL="$(ls "$PACKED"/*.tgz)"
+          cd "$(mktemp -d)"
+          echo '{ "name": "nest11-compat", "private": true }' > package.json
+          npm install --no-audit --no-fund --loglevel=error "$TARBALL" \
+            reflect-metadata rxjs ws \
+            @nestjs/common@11 @nestjs/core@11 @nestjs/platform-express@11 \
+            @nestjs/microservices@11 @nestjs/websockets@11 \
+            @nestjs/platform-ws@11
+          node "$GITHUB_WORKSPACE/scripts/nest11-compat.cjs"
+
+      # The package ships ESM but promises CommonJS consumers can require() it.
+      # Nothing else in the suite would catch a stray top-level await, which
+      # breaks that silently and only for CJS users.
+      #
+      # Run on the packed tarball and the newest Nest - what a consumer
+      # installs - as the step above runs it on the oldest, and silenced
+      # nowhere for the same reason. This used to install the workspace
+      # directory, which npm links rather than copies: the SDK then resolved
+      # its Nest from the workspace, not from what the step installed.
+      - name: require(esm) from CommonJS
+        run: |
+          set -euo pipefail
+          PACKED="$(mktemp -d)"
+          npm pack --ignore-scripts --pack-destination "$PACKED"
+          TARBALL="$(ls "$PACKED"/*.tgz)"
+          cd "$(mktemp -d)"
+          echo '{ "name": "require-esm", "private": true }' > package.json
+          npm install --no-audit --no-fund --loglevel=error "$TARBALL" \
+            reflect-metadata rxjs \
+            @nestjs/common@12 @nestjs/core@12 @nestjs/microservices@12
+          node -r reflect-metadata -e '
+            const o = require("@nestjs/observe");
+            if (typeof o.createObserveModule !== "function") {
+              throw new Error("createObserveModule missing from the require(esm) surface");
+            }
+            const { ObserveModule, ObserveInstrument } = o.createObserveModule();
+            if (typeof ObserveModule.forRoot !== "function") {
+              throw new Error("ObserveModule.forRoot missing");
+            }
+            if (typeof ObserveInstrument.instanceDecorator !== "function") {
+              throw new Error("ObserveInstrument.instanceDecorator missing");
+            }
+            console.log("require(esm) OK on node " + process.version);
+          '

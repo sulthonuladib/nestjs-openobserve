@@ -1,0 +1,21 @@
+.idea/
+.envrc
+node_modules/
+.DS_Store
+*.map
+*.tsbuildinfo
+
+# output
+dist/
+coverage/
+
+# configuration
+/.vscode
+
+# sample
+/sample
+
+yarn.lock
+
+# source-context.util.spec.ts scratch tree (cleaned up in afterAll)
+/.tmp-source-context-*
