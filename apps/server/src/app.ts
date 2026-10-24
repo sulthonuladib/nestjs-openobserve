@@ -23,6 +23,8 @@ import { executionsModule } from "./modules/executions";
 import { healthModule } from "./modules/health";
 import { ingestModule } from "./modules/ingest";
 import { logsModule } from "./modules/logs";
+import { cliLinkModule } from "./modules/link";
+import { linkApprovalModule } from "./modules/link/approval";
 
 export interface Deps {
   readonly config: Config;
@@ -30,7 +32,9 @@ export interface Deps {
 }
 
 export function createIngestApp(deps: Deps) {
-  return new Elysia({ name: "ingest-app" }).use(ingestModule(deps));
+  return new Elysia({ name: "ingest-app" })
+    .use(ingestModule(deps))
+    .use(cliLinkModule(deps));
 }
 
 export function createApiApp(deps: Deps) {
@@ -53,13 +57,15 @@ export function createApiApp(deps: Deps) {
     // `ingestApp` is mounted too, so a single-port deployment (behind one
     // reverse proxy) needs no path rewriting in the agent's `endpoint`.
     .use(ingestModule(deps))
+    .use(cliLinkModule(deps))
     .use(healthModule(deps))
     .group("/api/v1", (api) =>
       api
         .use(applicationsModule(deps))
         .use(executionsModule(deps))
         .use(errorsModule(deps))
-        .use(logsModule(deps)),
+        .use(logsModule(deps))
+        .use(linkApprovalModule(deps)),
     );
 
   // The dashboard SPA, when a build is present. Registered last so API routes

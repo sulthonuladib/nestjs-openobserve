@@ -75,7 +75,6 @@ jobs:
       - name: Compile the server into one executable
         env:
           TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.version.outputs.version }}
         run: |
           bun build apps/server/src/index.ts \
             --compile \
@@ -121,6 +120,8 @@ jobs:
     name: image (multi-arch)
     needs: version
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
         with:
