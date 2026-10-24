@@ -1,21 +1,128 @@
-# nestjs-openobserve
+# NestJS Observe — self-hosted
 
-To install dependencies:
+A self-hosted backend for the [`@nestjs/observe`](https://github.com/nestjs/observe)
+SDK: the collector, the storage and the dashboard that the hosted product runs,
+minus pricing.
+
+Point the agent at it and it reports:
+
+```bash
+OBSERVE_ENDPOINT=https://observe.example.com   # instead of observe-api.nestjs.com
+OBSERVE_APP_KEY=...
+OBSERVE_APP_SECRET=...
+```
+
+No npm package. No plans, no seats, no event metering, no overage pauses — the
+collector **always** answers `{"degraded":false}`, so the agent never withholds
+data. You run it because you want your telemetry on your own disk, not because a
+tier allows it.
+
+---
+
+## Quick start
+
+```bash
+docker compose up -d          # Postgres
+cp .env.example .env
+bun install
+bun run dev                   # ingest :4319, dashboard :4320
+```
+
+Then, from a NestJS project that uses the SDK:
+
+```bash
+OBSERVE_ENDPOINT=http://localhost:4319 npx @nestjs/observe link
+```
+
+The CLI prints a code, you approve it at
+[`http://localhost:4320/dashboard/link`](http://localhost:4320/dashboard/link),
+and it writes `OBSERVE_APP_KEY` / `OBSERVE_APP_SECRET` into the app's `.env`.
+
+Single-port deployment (one reverse proxy in front):
+
+```bash
+OBSERVE_SINGLE_PORT=1 bun run dev   # everything on :4320
+```
+
+## What it is
+
+| Component | Path | What it does |
+|---|---|---|
+| Collector | `apps/server/src/modules/ingest/` | Accepts the SDK's gzip telemetry batches, validates them against the wire contract, writes one transaction per batch |
+| Query API | `apps/server/src/modules/*/` | Dashboard API, typed end-to-end from the Postgres schema via `drizzle-typebox` |
+| Storage | `apps/server/src/db/` | Postgres + Drizzle, append-only tables, per-minute rollups |
+| Shared contract | `packages/shared/src/wire.ts` | The wire contract, ported from the vendored SDK and kept equal to it by a test |
+| Vendored SDK | `repos/observe/` | `@nestjs/observe` as a **git subtree** — read-only reference for agents and humans, never built, never shipped |
+
+## Documentation
+
+- **[`docs/PLAN.md`](docs/PLAN.md)** — scope, architecture, data model, milestones
+- **[`docs/spec/ingest-api.md`](docs/spec/ingest-api.md)** — the wire contract, cited from SDK source
+- **[`docs/spec/dashboard-features.md`](docs/spec/dashboard-features.md)** — the hosted dashboard's pages, charts and workflows, reverse-engineered
+- **[`docs/spec/dashboard-api.md`](docs/spec/dashboard-api.md)** — its REST surface
+- **[`docs/spec/tech-stack.md`](docs/spec/tech-stack.md)** — stack decisions and the reasons
+- **[`docs/spec/release-pipeline.md`](docs/spec/release-pipeline.md)** — versioning, image/tarball artifacts, CI
+
+## Development
 
 ```bash
 bun install
+bun run typecheck      # every workspace package, then the root
+bun test               # unit + conformance
+bun test test/conformance   # just the SDK wire-contract equality checks
+bun run scripts/smoke.ts --spawn   # ingest a realistic batch, read it back
 ```
 
-To run:
+`bun run dev` needs a Postgres: `docker compose up -d` starts one on `:5433`
+(`:5432` is the conventional port, but a dev machine usually has one already).
+
+### Migrations
 
 ```bash
-bun run index.ts
+bun run db:generate    # apps/server/drizzle/*.sql from src/db/schema.ts
+bun run db:migrate     # apply
 ```
 
-To type check:
+Forward-only, reviewed before merge. The server applies pending migrations at
+boot unless `OBSERVE_RUN_MIGRATIONS=0`.
+
+### The vendored SDK
 
 ```bash
-bun check
+git subtree pull --prefix=repos/observe https://github.com/nestjs/observe.git master --squash
 ```
 
-This project was created using `bun init` in bun v1.4.3. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+`repos/` is excluded from the Docker build context, from `git archive` and from
+every release artifact, and CI fails if any of it leaks into one. `test/conformance/`
+imports the vendored contract on purpose — that is what makes a stale port fail
+the build instead of rejecting a customer's batches.
+
+## Configuration
+
+See [`.env.example`](.env.example). Only `OBSERVE_DATABASE_URL` is required.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OBSERVE_DATABASE_URL` | `postgres://observe:observe@localhost:5432/observe` | Postgres 15+ |
+| `OBSERVE_DATABASE_POOL` | `20` | connection pool size |
+| `OBSERVE_INGEST_PORT` | `4319` | collector listener (internet-facing) |
+| `OBSERVE_API_PORT` | `4320` | dashboard + query API |
+| `OBSERVE_SINGLE_PORT` | `0` | serve both on `OBSERVE_API_PORT` |
+| `OBSERVE_RUN_MIGRATIONS` | `1` | migrate at boot |
+| `OBSERVE_ALLOW_ANONYMOUS_INGEST` | `1` | accept batches with no key pair (local dev) |
+| `OBSERVE_PUBLIC_URL` | `http://localhost:4320` | origin used by `/cli-link` |
+
+## Compatibility
+
+| | |
+|---|---|
+| SDK | `@nestjs/observe >=0.3.17 <0.4.0`, vendored at `0275d36` |
+| Ingest API | `v1` — the hosted collector's paths, unchanged |
+| Postgres | 15, 16, 17 |
+
+A batch the vendored contract accepts is never answered `400`; a batch is never
+answered `degraded: true`. Those two invariants are tested, not promised.
+
+## Licence
+
+MIT. `@nestjs/observe` is MIT, © Kamil Mysliwiec — see [`NOTICE`](NOTICE).

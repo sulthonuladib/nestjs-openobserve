@@ -1,0 +1,18 @@
+NestJS Observe — self-hosted
+Copyright (c) 2026 the contributors. MIT licensed; see LICENSE.
+
+This product speaks the wire protocol of, and vendors the source of,
+@nestjs/observe:
+
+    @nestjs/observe
+    Copyright (c) 2017-present Kamil Mysliwiec <https://kamilmysliwiec.com>
+    MIT License — https://github.com/nestjs/observe
+
+The vendored copy lives in `repos/observe/` as a git subtree and is used as
+read-only reference material. It is not built, not bundled and not shipped in any
+release artifact. No code from it is relicensed here: the wire contract in
+`packages/shared/src/wire.ts` is an independent restatement of a protocol, kept
+equal to the original by `test/conformance/wire-contract.test.ts`.
+
+`@nestjs` and `NestJS` are trademarks of their respective owners. This project
+is not affiliated with or endorsed by the NestJS core team.
