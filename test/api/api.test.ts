@@ -16,9 +16,17 @@ import { loadConfig } from "../../apps/server/src/plugins/config";
 import { connectDatabase } from "../../apps/server/src/plugins/database";
 import { sampleBatch } from "../../packages/shared/src/fixtures";
 
+/**
+ * A database of its own. These tests TRUNCATE every table in `beforeEach`, so
+ * pointing them at the dev database deletes the operator's admin account and
+ * telemetry — which is exactly what happened once.
+ *
+ *   createdb -h 127.0.0.1 -p 5433 -U observe observe_test
+ */
 const databaseUrl =
+  process.env.OBSERVE_TEST_DATABASE_URL ??
   process.env.OBSERVE_DATABASE_URL ??
-  "postgres://observe:observe@localhost:5433/observe";
+  "postgres://observe:observe@localhost:5433/observe_test";
 
 // Small pools on purpose: this suite runs next to a dev server and a Postgres
 // that other projects share, and a 20-connection pool per test file is how you
