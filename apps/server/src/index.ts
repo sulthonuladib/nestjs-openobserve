@@ -15,7 +15,7 @@ import { connectDatabase } from "./plugins/database";
 
 const MAX_BATCH_BYTES = 32 * 1024 * 1024; // the wire allows 5000 entries/section
 
-// `nestjs-observe admin …` is the same binary with a different argv: no second
+// `nestjs-openobserve admin …` is the same binary with a different argv: no second
 // artifact to ship, and the operator's muscle memory works on any host.
 if (process.argv[2] === "admin") {
   process.exit(await runAdminCli(process.argv.slice(3)));

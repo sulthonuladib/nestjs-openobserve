@@ -1,7 +1,7 @@
 /**
  * Instance administration: users, invites, settings, audit.
  *
- * Every route here requires an instance admin. The CLI (`nestjs-observe admin …`)
+ * Every route here requires an instance admin. The CLI (`nestjs-openobserve admin …`)
  * performs the same operations for the day the UI is unreachable — see
  * `docs/SELF-HOSTED.md` §3. Neither is a superset of the other by accident.
  *

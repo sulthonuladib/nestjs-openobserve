@@ -1,5 +1,5 @@
 /**
- * `nestjs-observe admin …` — the operations an operator needs when the UI is not
+ * `nestjs-openobserve admin …` — the operations an operator needs when the UI is not
  * reachable, or when there is no UI yet.
  *
  * The rule from `docs/SELF-HOSTED.md` §3: every identity operation the dashboard
@@ -25,7 +25,7 @@ import {
   span,
 } from "./db/schema";
 
-const USAGE = `nestjs-observe admin — instance administration
+const USAGE = `nestjs-openobserve admin — instance administration
 
   admin info                     versions, row counts, database size
   admin create-user  --email E [--role read|write|admin] [--password-stdin]
