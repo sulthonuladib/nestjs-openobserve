@@ -16,6 +16,18 @@ export function formatCount(value: number): string {
   return `${(value / 1_000_000).toFixed(1)}M`;
 }
 
+/**
+ * A full, grouped number — what the metric cards print in 28px.
+ *
+ * `formatCount` compacts to `3.0k`, which is right in a table cell and wrong as
+ * the headline of a card: the reference shows `3,044`, and a dashboard's one big
+ * number should not make the reader do the multiplication.
+ */
+export function formatNumber(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return Math.round(value).toLocaleString();
+}
+
 export function formatPercent(ratio: number | null | undefined, digits = 1): string {
   if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return "—";
   return `${(ratio * 100).toFixed(digits)}%`;
@@ -47,6 +59,7 @@ export const TIME_RANGES = [
   { id: "1h", label: "1h", ms: 60 * 60 * 1000 },
   { id: "6h", label: "6h", ms: 6 * 60 * 60 * 1000 },
   { id: "24h", label: "24h", ms: 24 * 60 * 60 * 1000 },
+  { id: "3d", label: "3d", ms: 3 * 24 * 60 * 60 * 1000 },
   { id: "7d", label: "7d", ms: 7 * 24 * 60 * 60 * 1000 },
   { id: "30d", label: "30d", ms: 30 * 24 * 60 * 60 * 1000 },
 ] as const;
@@ -56,6 +69,58 @@ export type TimeRangeId = (typeof TIME_RANGES)[number]["id"];
 export function windowFor(range: TimeRangeId, now = Date.now()): { from: number; to: number } {
   const found = TIME_RANGES.find((entry) => entry.id === range) ?? TIME_RANGES[1];
   return { from: now - found.ms, to: now };
+}
+
+/** A range id from a URL, falling back rather than throwing on a hand-edited one. */
+export function parseRange(value: string | null | undefined, fallback: TimeRangeId = "1h"): TimeRangeId {
+  const found = TIME_RANGES.find((entry) => entry.id === value);
+  return found?.id ?? fallback;
+}
+
+/**
+ * The equal-length window immediately before `range`.
+ *
+ * Every card's "−18% since last period" is measured against this, so it has to be
+ * the same length and the same distance back — not "the previous bucket".
+ */
+export function previousWindowFor(
+  range: TimeRangeId,
+  now = Date.now(),
+): { from: number; to: number } {
+  const current = windowFor(range, now);
+  const span = current.to - current.from;
+  return { from: current.from - span, to: current.from };
+}
+
+/** Signed relative change, or `null` when there is nothing honest to compare to. */
+export function deltaRatio(
+  current: number,
+  previous: number | null | undefined,
+): number | null {
+  if (previous === null || previous === undefined) return null;
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) return null;
+  return (current - previous) / previous;
+}
+
+/** `Oct 25, 5:06 AM` — the card footers' axis endpoints. */
+export function formatAxisStamp(timestamp: number): string {
+  return new Date(timestamp).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * Splits a duration into the big number and its unit, because the metric card
+ * draws them at different sizes (`209` in 28px, `ms` in 13px muted).
+ */
+export function durationParts(ms: number | null | undefined): { value: string; unit: string } {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return { value: "—", unit: "" };
+  if (ms < 1) return { value: (ms * 1000).toFixed(0), unit: "µs" };
+  if (ms < 1000) return { value: ms.toFixed(ms < 10 ? 1 : 0), unit: "ms" };
+  return { value: (ms / 1000).toFixed(2), unit: "s" };
 }
 
 /**
@@ -114,6 +179,31 @@ export function layoutWaterfall(
   }
 
   return { bars, totalMs };
+}
+
+/** Depth-first span order, so a parent always renders above its children. */
+export function orderSpanTree<T extends { id: string; parentId: string | null; seq: number }>(
+  spans: ReadonlyArray<T>,
+): T[] {
+  const byParent = new Map<string | null, T[]>();
+  for (const span of spans) {
+    const list = byParent.get(span.parentId) ?? [];
+    list.push(span);
+    byParent.set(span.parentId, list);
+  }
+  for (const list of byParent.values()) list.sort((a, b) => a.seq - b.seq);
+
+  const ordered: T[] = [];
+  const walk = (parentId: string | null) => {
+    for (const child of byParent.get(parentId) ?? []) {
+      ordered.push(child);
+      walk(child.id);
+    }
+  };
+  walk(null);
+  // Orphans (a child whose parent the agent's repair path dropped) still render.
+  for (const span of spans) if (!ordered.includes(span)) ordered.push(span);
+  return ordered;
 }
 
 /** Self time: a span's duration minus its direct children's. */

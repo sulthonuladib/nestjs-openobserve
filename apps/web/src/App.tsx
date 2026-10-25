@@ -1,35 +1,90 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { api, ApiError, auth } from "./api";
-import { ErrorState, Skeleton } from "./components/ui";
-import { useQueryParam, useRoute } from "./router";
-import type { TimeRangeId } from "./format";
+import {
+  Box,
+  Button,
+  CssBaseline,
+  Drawer,
+  Skeleton,
+  ThemeProvider,
+  Typography,
+  useMediaQuery,
+} from "@mui/material";
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Component, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
+import {
+  BrowserRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { api, ApiError, auth, type SessionUser } from "./api";
+import { NavRail } from "./components/shell/NavRail";
+import { Sidebar } from "./components/shell/Sidebar";
+import { TopBar } from "./components/shell/TopBar";
+import {
+  DEFAULT_RANGE,
+  isRange,
+  ShellProvider,
+  useShell,
+  type RangeId,
+  type ShellApplication,
+  type ShellState,
+} from "./components/shell/ShellContext";
+import { windowFor } from "./format";
 import { Application } from "./pages/Application";
+import { Invite, Login, Setup } from "./pages/Auth";
 import { Errors, Logs } from "./pages/Errors";
 import { ExecutionDetail, Executions } from "./pages/Executions";
-import { Invite, Login, Setup } from "./pages/Auth";
+import { Jobs } from "./pages/Jobs";
 import { Link } from "./pages/Link";
+import { Metrics } from "./pages/Metrics";
 import { Overview } from "./pages/Overview";
+import { Releases } from "./pages/Releases";
+import { Users } from "./pages/Users";
+import { colors, theme } from "./theme";
 
 /**
- * Shell plus routing.
- *
- * Routes are declared in one switch rather than a route table: six pages, no
- * nested layouts, and the params arrive as an array. The sidebar is the only
- * chrome; everything below is the page's own business.
+ * One QueryClient for the whole app. `staleTime` is short because this data is
+ * genuinely live, `refetchOnWindowFocus` stays on, since an operator alt-tabbing
+ * back wants the current state, not the state from ten minutes ago. Polling is
+ * not configured here: pages take it from `useLive()`, so the LIVE toggle in the
+ * top bar is the single switch that starts and stops every timer in the tree.
  */
-export function App() {
-  const { route, navigate } = useRoute();
-  const [range, setRange] = useQueryParam(route, "range", "1h");
+const client = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5_000,
+      retry: 1,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
 
-  /*
-   * Three unauthenticated screens, resolved before anything else renders:
-   *   setup   — only while the instance has no admin (the endpoint 409s after)
-   *   invite  — /invite/<token>
-   *   login   — everything else without a session
-   * The probe is one request; a dashboard that flashes its chrome before
-   * redirecting to /login looks broken.
-   */
+export function App() {
+  return (
+    <QueryClientProvider client={client}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <BrowserRouter>
+          <Gate />
+        </BrowserRouter>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
+}
+
+/**
+ * Three unauthenticated screens, resolved before any chrome renders:
+ *   setup   — only while the instance has no admin (the endpoint 409s after)
+ *   invite  — /invite/<token>
+ *   login   — everything else without a session
+ * The probe is one request; a dashboard that flashes its sidebar before
+ * redirecting to sign-in looks broken.
+ */
+function Gate() {
+  const { pathname } = useLocation();
   const status = useQuery({ queryKey: ["auth", "status"], queryFn: auth.status, retry: false });
   const me = useQuery({
     queryKey: ["auth", "me"],
@@ -38,247 +93,433 @@ export function App() {
     retry: false,
   });
 
-  const inviteToken = route.params[0] === "invite" ? route.params[1] : undefined;
   const refresh = () => {
     void status.refetch();
     void me.refetch();
   };
 
-  if (status.isLoading) return <div className="p-6 text-sm text-ink-faint">Loading…</div>;
+  if (status.isLoading) return <Booting />;
   if (status.isError) {
     return (
-      <div className="p-6">
-        <ErrorState error={status.error} />
-        <p className="mt-2 text-xs text-ink-faint">
-          The collector did not answer /api/v1/auth/status. Is the server running?
-        </p>
-      </div>
+      <Centered>
+        <Typography variant="h1" sx={{ mb: 1 }}>
+          Collector unreachable
+        </Typography>
+        <Typography sx={{ color: colors.muted, fontSize: 13, mb: 2 }}>
+          {status.error instanceof Error ? status.error.message : "The collector did not answer."}
+        </Typography>
+        <Typography sx={{ color: colors.faint, fontSize: 12 }}>
+          The dashboard could not reach <code>/api/v1/auth/status</code>. Is the server running?
+        </Typography>
+      </Centered>
     );
   }
-  if (status.data?.setupRequired) return <Setup status={status.data} onDone={refresh} />;
-  if (inviteToken) return <Invite token={inviteToken} onDone={refresh} />;
+
+  if (status.data?.setupRequired) {
+    return (
+      <Centered>
+        <Setup status={status.data} onDone={refresh} />
+      </Centered>
+    );
+  }
+
+  const inviteToken = inviteTokenFrom(pathname);
+  if (inviteToken) {
+    return (
+      <Centered>
+        <Invite token={inviteToken} onDone={refresh} />
+      </Centered>
+    );
+  }
+
   if (me.isError) {
     // 401 is "sign in"; anything else is a real failure worth showing.
-    if (me.error instanceof ApiError && me.error.status === 401) return <Login onDone={refresh} />;
+    if (me.error instanceof ApiError && me.error.status === 401) {
+      return (
+        <Centered>
+          <Login onDone={refresh} />
+        </Centered>
+      );
+    }
     return (
-      <div className="p-6">
-        <ErrorState error={me.error} />
-      </div>
+      <Centered>
+        <Typography variant="h1" sx={{ mb: 1 }}>
+          Could not load your session
+        </Typography>
+        <Typography sx={{ color: colors.muted, fontSize: 13 }}>
+          {me.error instanceof Error ? me.error.message : "Unknown error"}
+        </Typography>
+      </Centered>
     );
   }
-  if (me.isLoading || !me.data) {
-    return <div className="p-6 text-sm text-ink-faint">Loading…</div>;
-  }
 
+  if (me.isLoading || !me.data) return <Booting />;
+
+  return <Shell user={me.data.user} />;
+}
+
+/** `/invite/<token>` → token. */
+function inviteTokenFrom(pathname: string): string | undefined {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments[0] !== "invite") return undefined;
+  return segments[1];
+}
+
+function Booting() {
   return (
-    <Shell
-      route={route}
-      range={range as TimeRangeId}
-      navigate={navigate}
-      user={me.data.user}
-    />
+    <Centered>
+      <Skeleton variant="text" width={180} height={30} />
+      <Skeleton variant="text" width={260} height={16} />
+    </Centered>
   );
 }
 
-function Shell({
-  route,
-  range,
-  navigate,
-  user,
-}: {
-  route: ReturnType<typeof useRoute>["route"];
-  range: TimeRangeId;
-  navigate: (to: string) => void;
-  user: { email: string; role: string };
-}) {
-  const health = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 30_000 });
-
-  const [theme, setTheme] = useState<"dark" | "light">(
-    () => (localStorage.getItem("observe.theme") as "dark" | "light") ?? "dark",
+function Centered({ children }: { children: ReactNode }) {
+  return (
+    <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh", px: 3 }}>
+      <Box sx={{ width: "100%", maxWidth: 420 }}>{children}</Box>
+    </Box>
   );
-  useEffect(() => {
-    document.documentElement.classList.toggle("light", theme === "light");
-    document.documentElement.classList.toggle("dark", theme === "dark");
-    localStorage.setItem("observe.theme", theme);
-  }, [theme]);
+}
 
-  // `/applications/:id/<tab>` keeps the selected app while switching tabs, which
-  // is the navigation people actually do.
-  const [section, id, tab] = route.params;
+/**
+ * The shell: rail, sidebar, top bar, and a content column that owns the scroll.
+ *
+ * It resolves the URL into one context object (`ShellState`) that every page
+ * reads through `useShell()`/`useLive()`:
+ *   `?range=` — the window, default `1h`
+ *   `?app=`   — the application filter, absent means all applications
+ *   `?search=` — the text search
+ * Wall-clock time is *not* in the URL; a range is relative, and a link that says
+ * "the last hour" should still mean the last hour tomorrow.
+ */
+function Shell({ user }: { user: SessionUser }) {
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { pathname, search: locationSearch } = useLocation();
+  const queryClient = useQueryClient();
+
+  const storedRange = params.get("range");
+  const range: RangeId = isRange(storedRange) ? storedRange : DEFAULT_RANGE;
+  const appFilter = params.get("app") ?? "";
+  const search = params.get("search") ?? "";
+
+  const [live, setLiveState] = useState<boolean>(() => readFlag("observe.shell.live", true));
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    const stored = readFlag("observe.shell.sidebar", null);
+    if (stored === null) return window.innerWidth < 900;
+    return stored;
+  });
+
+  const interval: number | false = live ? 10_000 : false;
+
+  useEffect(() => {
+    writeFlag("observe.shell.live", live);
+  }, [live]);
+  useEffect(() => {
+    writeFlag("observe.shell.sidebar", collapsed);
+  }, [collapsed]);
+
+  const setLive = (next: boolean) => setLiveState(next);
+
+  const updateParams = (mutate: (next: URLSearchParams) => void) => {
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        mutate(next);
+        return next;
+      },
+      // Ranges and searches are view settings, not destinations: they replace
+      // the current history entry instead of stacking one per click.
+      { replace: true },
+    );
+  };
+
+  const setRange = (value: RangeId) =>
+    updateParams((next) => {
+      // The default range is the absence of a parameter, so a bare URL and a
+      // `/dashboard?range=1h` never mean two different cache entries.
+      if (value === DEFAULT_RANGE) next.delete("range");
+      else next.set("range", value);
+    });
+
+  const apps = useQuery({
+    queryKey: ["applications", "switcher"],
+    queryFn: () => api.applications(windowFor("24h")),
+    staleTime: 30_000,
+    refetchInterval: interval,
+  });
+
+  const pendingLinks = useQuery({
+    queryKey: ["link", "pending"],
+    queryFn: api.pendingLinks,
+    enabled: user.role === "admin",
+    retry: false,
+    refetchInterval: interval,
+  });
+
+  const applications = useMemo<ShellApplication[]>(
+    () => (apps.data ?? []).map((entry) => ({ id: entry.id, name: entry.name, serviceId: entry.serviceId })),
+    [apps.data],
+  );
+
+  // `:id` wins over `?app=`: being on a page for one application is a stronger
+  // statement than a filter that outlived it.
+  const segments = pathname.split("/").filter(Boolean);
+  const routeAppId = segments[0] === "applications" ? (segments[1] ?? "") : "";
+  const appId = routeAppId || appFilter;
+  const navAppId = routeAppId || appFilter || applications[0]?.id || "";
+
+  const setAppId = (next: string) => {
+    if (routeAppId) {
+      // Switching applications while on an application page moves the page, and
+      // keeps the tab: /applications/a/errors → /applications/b/errors.
+      const rest = segments.slice(2).join("/");
+      const query = new URLSearchParams(locationSearch);
+      query.delete("app");
+      if (next) query.set("app", next);
+      const suffix = query.toString();
+      const target = next ? `/applications/${next}${rest ? `/${rest}` : ""}` : "/";
+      navigate(`${target}${suffix ? `?${suffix}` : ""}`, { replace: true });
+      return;
+    }
+    updateParams((params) => {
+      if (next) params.set("app", next);
+      else params.delete("app");
+    });
+  };
+
+  const setSearch = (next: string) =>
+    updateParams((params) => {
+      if (next) params.set("search", next);
+      else params.delete("search");
+    });
+
+  const state: ShellState = {
+    appId,
+    navAppId,
+    apps: applications,
+    appsLoading: apps.isLoading,
+    range,
+    setRange,
+    setAppId,
+    search,
+    setSearch,
+    live,
+    setLive,
+    interval,
+    collapsed,
+    toggleCollapsed: () => setCollapsed((value) => !value),
+    navigate: (to: string) => navigate(to),
+    refresh: () => {
+      void queryClient.invalidateQueries();
+    },
+    notifications: pendingLinks.data?.items.length ?? 0,
+    user,
+  };
+
+  const narrow = useMediaQuery(theme.breakpoints.down("md"));
+
+  // `Esc` closes the sidebar when it is a drawer. The search field owns its own
+  // Escape handling in the top bar.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && narrow && !collapsed) setCollapsed(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [collapsed, narrow]);
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="flex w-56 shrink-0 flex-col border-r bg-surface-raised">
-        <div className="border-b px-4 py-3">
-          <a href="#/" className="text-sm font-semibold">
-            NestJS <span className="text-accent">Observe</span>
-          </a>
-          <div className="mt-0.5 text-[11px] text-ink-faint">self-hosted</div>
-        </div>
+    <ShellProvider value={state}>
+      <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+        <NavRail />
 
-        <nav className="flex-1 p-2 text-sm">
-          <NavItem active={route.path === "/"} onClick={() => navigate("/")}>
-            Overview
-          </NavItem>
-          <NavItem
-            active={section === "applications" && !tab}
-            onClick={() => navigate("/#")}
-          >
-            Applications
-          </NavItem>
-          {id && section === "applications" && (
-            <div className="mt-1 space-y-0.5 border-l pl-3">
-              <NavItem onClick={() => navigate(`/applications/${id}?range=${range}`)} active={!tab}>
-                Operations
-              </NavItem>
-              <NavItem
-                onClick={() => navigate(`/applications/${id}/executions?range=${range}`)}
-                active={tab === "executions"}
-              >
-                Executions
-              </NavItem>
-              <NavItem
-                onClick={() => navigate(`/applications/${id}/errors?range=${range}`)}
-                active={tab === "errors"}
-              >
-                Errors
-              </NavItem>
-              <NavItem
-                onClick={() => navigate(`/applications/${id}/logs?range=${range}`)}
-                active={tab === "logs"}
-              >
-                Logs
-              </NavItem>
-            </div>
-          )}
-          <div className="mt-3 border-t pt-3">
-            <NavItem active={route.path === "/link"} onClick={() => navigate("/link")}>
-              Link an app
-            </NavItem>
-          </div>
-        </nav>
-
-        <div className="space-y-1 border-t px-4 py-3 text-[11px] text-ink-faint">
-          <div className="flex items-center justify-between">
-            <span>database</span>
-            <span className={health.data?.database === "up" ? "text-ok" : "text-danger"}>
-              {health.data?.database ?? "…"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>ingest</span>
-            <span>{health.data?.ingestApi ?? "…"}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>batches</span>
-            <span className="tabular">{health.data?.stats.batches ?? 0}</span>
-          </div>
-          <div className="truncate pt-1" title={user.email}>
-            {user.email}
-          </div>
-          <div>{user.role}</div>
-          <button
-            className="mt-1 w-full rounded border py-1 hover:bg-surface-hover"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            {theme === "dark" ? "Light" : "Dark"} theme
-          </button>
-          <button
-            className="w-full rounded border py-1 hover:bg-surface-hover"
-            onClick={async () => {
-              await auth.logout().catch(() => undefined);
-              window.location.hash = "#/";
-              window.location.reload();
+        {narrow ? (
+          <Drawer
+            open={!collapsed}
+            onClose={() => setCollapsed(true)}
+            variant="temporary"
+            ModalProps={{ keepMounted: true }}
+            slotProps={{
+              paper: { sx: { width: 256, backgroundColor: colors.page, backgroundImage: "none" } },
             }}
           >
-            Sign out
-          </button>
-        </div>
-      </aside>
-
-      <main className="min-w-0 flex-1 p-6">
-        {health.isError && (
-          <div className="mb-4">
-            <ErrorState error={health.error} />
-          </div>
+            <Sidebar onNavigate={() => setCollapsed(true)} />
+          </Drawer>
+        ) : collapsed ? null : (
+          <Sidebar />
         )}
-        <Body route={route} range={range as TimeRangeId} navigate={navigate} />
-      </main>
-    </div>
+
+        <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+          <TopBar />
+          <Box
+            component="main"
+            id="content"
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              px: { xs: 2, md: 3 },
+              pb: 6,
+            }}
+          >
+            <PageBoundary key={pathname}>
+              <Box className="route-in">
+                <Routes>
+                  <Route path="/" element={<Page page={Overview} />} />
+                  <Route path="/applications/:id" element={<Page page={Application} />} />
+                  <Route
+                    path="/applications/:id/executions"
+                    element={<Page page={Executions} />}
+                  />
+                  <Route path="/executions/:id" element={<Page page={ExecutionDetail} />} />
+                  <Route path="/applications/:id/errors" element={<Page page={Errors} />} />
+                  <Route path="/applications/:id/logs" element={<Page page={Logs} />} />
+                  <Route path="/applications/:id/jobs" element={<Page page={Jobs} />} />
+                  <Route path="/applications/:id/metrics" element={<Page page={Metrics} />} />
+                  <Route path="/applications/:id/releases" element={<Page page={Releases} />} />
+                  <Route path="/applications/:id/users" element={<Page page={Users} />} />
+                  <Route path="/link" element={<Page page={Link} />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Box>
+            </PageBoundary>
+
+            <Box
+              component="footer"
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 2,
+                flexWrap: "wrap",
+                mt: 5,
+                pt: 2,
+                borderTop: `1px solid ${colors.border}`,
+                color: colors.faint,
+                fontSize: 11,
+              }}
+            >
+              <span>© {new Date().getFullYear()} NestJS Observe — self-hosted</span>
+              <Box component="span" sx={{ color: colors.faint }}>
+                No pricing, no plans, no quotas
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    </ShellProvider>
   );
 }
 
-function Body({
-  route,
-  range,
-  navigate,
-}: {
-  route: ReturnType<typeof useRoute>["route"];
-  range: TimeRangeId;
-  navigate: (to: string) => void;
-}) {
-  const [section, first, second] = route.params;
-  const operationRowId = route.query.get("operationRowId") ?? undefined;
+/**
+ * The shell owns the URL, so it — not each page — decides what a page is told.
+ *
+ * A page declares the slice it needs (`{ appId, range }` for most of them, `{ id }`
+ * for an execution) and ignores the rest; the boundary is deliberately untyped
+ * because the pages are written separately and a page's own prop type must not
+ * force a change in the shell's route table.
+ */
+function Page({ page }: { page: unknown }) {
+  const shell = useShell();
+  const params = useParams();
+  const location = useLocation();
+  const query = new URLSearchParams(location.search);
 
-  if (!section) return <Overview route={route} navigate={navigate} />;
-  if (section === "link") return <Link />;
+  const props = {
+    appId: shell.appId,
+    id: params.id ?? shell.appId,
+    range: shell.range,
+    navigate: shell.navigate,
+    search: shell.search,
+    operationRowId: query.get("operationRowId") ?? undefined,
+    user: shell.user,
+    // Pages written against the pre-MUI hash router read `route`; it costs four
+    // lines to keep them working and it goes away with the last of them.
+    route: {
+      path: location.pathname,
+      params: location.pathname.split("/").filter(Boolean),
+      query,
+    },
+  };
 
-  if (section === "executions") {
-    return <ExecutionDetail id={first ?? ""} />;
+  const Component = page as React.ComponentType<Record<string, unknown>>;
+  return <Component {...props} />;
+}
+
+function NotFound() {
+  return (
+    <Box sx={{ pt: 6, pb: 4 }}>
+      <Typography variant="h1" sx={{ mb: 1 }}>
+        Not found
+      </Typography>
+      <Typography sx={{ color: colors.muted, fontSize: 13, mb: 3 }}>
+        There is no page at this address.
+      </Typography>
+      <Button variant="outlined" onClick={() => window.location.assign("/")}>
+        Back to the dashboard
+      </Button>
+    </Box>
+  );
+}
+
+/** A crashed page shows what broke, not a white rectangle. */
+class PageBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  override state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
   }
 
-  if (section === "applications" && first) {
-    if (second === "executions")
-      return (
-        <Executions
-          id={first}
-          range={range}
-          operationRowId={operationRowId}
-          navigate={navigate}
-        />
-      );
-    if (second === "errors")
-      return <Errors id={first} range={range} navigate={navigate} />;
-    if (second === "logs") return <Logs id={first} range={range} />;
-    return <Application id={first} range={range} navigate={navigate} />;
+  override componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("page crashed", error, info.componentStack);
   }
 
-  return (
-    <div className="space-y-3">
-      <h1 className="text-lg font-medium">Not found</h1>
-      <p className="text-sm text-ink-muted">
-        No route at <code className="font-mono">{route.path}</code>.
-      </p>
-      <button
-        className="rounded border px-3 py-1.5 text-sm hover:bg-surface-hover"
-        onClick={() => navigate("/")}
-      >
-        Back to overview
-      </button>
-    </div>
-  );
+  override render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <Box sx={{ pt: 4 }}>
+        <Typography variant="h2" sx={{ mb: 1 }}>
+          This page failed to render
+        </Typography>
+        <Typography
+          component="pre"
+          sx={{
+            color: colors.danger,
+            fontSize: 11,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            mb: 2,
+          }}
+        >
+          {this.state.error.message}
+        </Typography>
+        <Button variant="outlined" onClick={() => window.location.reload()}>
+          Reload
+        </Button>
+      </Box>
+    );
+  }
 }
 
-function NavItem({
-  active,
-  onClick,
-  children,
-}: {
-  active?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-current={active ? "page" : undefined}
-      className={`block w-full rounded px-2 py-1.5 text-left ${
-        active ? "bg-surface-hover text-ink" : "text-ink-muted hover:bg-surface-hover"
-      }`}
-    >
-      {children}
-    </button>
-  );
+function readFlag(key: string, fallback: boolean): boolean;
+function readFlag(key: string, fallback: null): boolean | null;
+function readFlag(key: string, fallback: boolean | null): boolean | null {
+  try {
+    const value = localStorage.getItem(key);
+    if (value === null) return fallback;
+    return value === "1";
+  } catch {
+    return fallback;
+  }
 }
 
-export { Skeleton };
+function writeFlag(key: string, value: boolean) {
+  try {
+    localStorage.setItem(key, value ? "1" : "0");
+  } catch {
+    // A browser in private mode with storage disabled is not a reason to break
+    // the shell; the toggle just will not persist.
+  }
+}

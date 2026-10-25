@@ -65,6 +65,21 @@ export const api = {
   operations: (appId: string, w: Window) =>
     unwrap(client.api.v1.applications({ id: appId }).operations.get({ query: w })),
 
+  /**
+   * One operation: its series, its slowest instances and its error groups.
+   *
+   * The page it backs is `/applications/:id/operations/:operationRowId`; there
+   * was no helper for it, and the Operation page is written against Eden types
+   * like every other page rather than fetching by hand.
+   */
+  operationDetail: (appId: string, operationRowId: string, w: Window) =>
+    unwrap(
+      client.api.v1
+        .applications({ id: appId })
+        .operations({ operationRowId })
+        .get({ query: w }),
+    ),
+
   executions: (
     appId: string,
     w: Window & { limit?: number; operationRowId?: string; kind?: "request" | "job" },
