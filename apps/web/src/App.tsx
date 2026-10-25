@@ -41,7 +41,9 @@ import { Jobs } from "./pages/Jobs";
 import { Link } from "./pages/Link";
 import { Metrics } from "./pages/Metrics";
 import { Overview } from "./pages/Overview";
+import { Operation } from "./pages/Operation";
 import { Releases } from "./pages/Releases";
+import { Runtime } from "./pages/Runtime";
 import { Users } from "./pages/Users";
 import { colors, theme } from "./theme";
 
@@ -380,6 +382,11 @@ function Shell({ user }: { user: SessionUser }) {
                   <Route path="/applications/:id/metrics" element={<Page page={Metrics} />} />
                   <Route path="/applications/:id/releases" element={<Page page={Releases} />} />
                   <Route path="/applications/:id/users" element={<Page page={Users} />} />
+                  <Route path="/applications/:id/runtime" element={<Page page={Runtime} />} />
+                  <Route
+                    path="/applications/:id/operations/:operationRowId"
+                    element={<Page page={Operation} />}
+                  />
                   <Route path="/link" element={<Page page={Link} />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
@@ -433,7 +440,7 @@ function Page({ page }: { page: unknown }) {
     range: shell.range,
     navigate: shell.navigate,
     search: shell.search,
-    operationRowId: query.get("operationRowId") ?? undefined,
+    operationRowId: params.operationRowId ?? query.get("operationRowId") ?? undefined,
     user: shell.user,
     // Pages written against the pre-MUI hash router read `route`; it costs four
     // lines to keep them working and it goes away with the last of them.

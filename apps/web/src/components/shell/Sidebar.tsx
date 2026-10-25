@@ -73,7 +73,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   const activity: Item[] = [
     { label: "Requests", to: app, hint: noApp },
-    { label: "Profiler", to: null, hint: "The SDK's CPU profiler is shelved upstream, so we do not ship a flamegraph." },
+    { label: "Profiler", to: app ? `${app}/runtime` : null, hint: "Runtime heartbeat — CPU, heap, event loop, GC. The SDK's sampling profiler is shelved upstream, so there is no flamegraph." },
     { label: "Jobs", to: app ? `${app}/jobs` : null, hint: noApp },
     { label: "Errors", to: app ? `${app}/errors` : null, hint: noApp },
     { label: "Users", to: app ? `${app}/users` : null, hint: noApp },
