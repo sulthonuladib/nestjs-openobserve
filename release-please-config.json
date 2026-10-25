@@ -3,7 +3,7 @@
   "release-type": "simple",
   "packages": {
     ".": {
-      "package-name": "nestjs-observe-selfhosted",
+      "package-name": "nestjs-openobserve",
       "changelog-path": "CHANGELOG.md",
       "release-type": "simple",
       "versioning": "prerelease",
@@ -21,14 +21,42 @@
     }
   },
   "changelog-sections": [
-    { "type": "feat", "section": "Features" },
-    { "type": "fix", "section": "Bug Fixes" },
-    { "type": "perf", "section": "Performance" },
-    { "type": "refactor", "section": "Refactoring", "hidden": true },
-    { "type": "docs", "section": "Documentation", "hidden": true },
-    { "type": "test", "section": "Tests", "hidden": true },
-    { "type": "chore", "section": "Chores", "hidden": true },
-    { "type": "deps", "section": "Dependencies" },
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "refactor",
+      "section": "Refactoring",
+      "hidden": true
+    },
+    {
+      "type": "docs",
+      "section": "Documentation",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Chores",
+      "hidden": true
+    },
+    {
+      "type": "deps",
+      "section": "Dependencies"
+    },
     {
       "type": "feat",
       "scope": "ingest",

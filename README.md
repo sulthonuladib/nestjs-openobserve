@@ -1,4 +1,4 @@
-# NestJS Observe — self-hosted
+# nestjs-openobserve
 
 A self-hosted backend for the [`@nestjs/observe`](https://github.com/nestjs/observe)
 SDK: the collector, the storage and the dashboard that the hosted product runs,
@@ -7,9 +7,7 @@ minus pricing.
 Point the agent at it and it reports:
 
 ```bash
-OBSERVE_ENDPOINT=https://observe.example.com   # instead of observe-api.nestjs.com
-OBSERVE_APP_KEY=...
-OBSERVE_APP_SECRET=...
+OBSERVE_ENDPOINT=http://localhost:4319     # instead of observe-api.nestjs.com
 ```
 
 No npm package. No plans, no seats, no event metering, no overage pauses — the
@@ -22,27 +20,41 @@ tier allows it.
 ## Quick start
 
 ```bash
-docker compose up -d          # Postgres
+docker compose up -d          # Postgres on :5433
 cp .env.example .env
 bun install
-bun run dev                   # ingest :4319, dashboard :4320
+bun dev                       # ingest :4319, dashboard :4320
 ```
 
-Then, from a NestJS project that uses the SDK:
+Open **http://localhost:4320**. With no admin yet you get the setup screen:
+instance name, your email, a password. That creates the first admin and then
+locks itself — `/setup` is never served again.
+
+Then, in a NestJS app:
+
+```bash
+bun add @nestjs/observe
+OBSERVE_ENDPOINT=http://localhost:4319 bun run start
+```
+
+No key pair is required by a local collector. A real one comes from the
+device-code flow:
 
 ```bash
 OBSERVE_ENDPOINT=http://localhost:4319 npx @nestjs/observe link
 ```
 
-The CLI prints a code, you approve it at
-[`http://localhost:4320/dashboard/link`](http://localhost:4320/dashboard/link),
-and it writes `OBSERVE_APP_KEY` / `OBSERVE_APP_SECRET` into the app's `.env`.
+It prints a code, you approve it at `http://localhost:4320/dashboard/link`, and it
+writes `OBSERVE_APP_KEY` / `OBSERVE_APP_SECRET` into the app's `.env`.
 
 Single-port deployment (one reverse proxy in front):
 
 ```bash
-OBSERVE_SINGLE_PORT=1 bun run dev   # everything on :4320
+OBSERVE_SINGLE_PORT=1 bun dev   # everything on :4320
 ```
+
+Seven copy-pasteable steps, clone to a reporting app:
+**[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)**.
 
 ## What it is
 
@@ -56,6 +68,9 @@ OBSERVE_SINGLE_PORT=1 bun run dev   # everything on :4320
 
 ## Documentation
 
+- **[`docs/GETTING-STARTED.md`](docs/GETTING-STARTED.md)** — clone to running collector to a reporting app, in seven steps
+- **[`docs/SELF-HOSTED.md`](docs/SELF-HOSTED.md)** — identity, setup wizard, invites, CLI, ops
+- **[`docs/COVERAGE.md`](docs/COVERAGE.md)** — every upstream capability, and where we are against it
 - **[`docs/PLAN.md`](docs/PLAN.md)** — scope, architecture, data model, milestones
 - **[`docs/spec/ingest-api.md`](docs/spec/ingest-api.md)** — the wire contract, cited from SDK source
 - **[`docs/spec/dashboard-features.md`](docs/spec/dashboard-features.md)** — the hosted dashboard's pages, charts and workflows, reverse-engineered

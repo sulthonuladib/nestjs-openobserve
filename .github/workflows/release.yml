@@ -3,7 +3,7 @@ name: release
 # Triggered by release-please merging its version PR (which creates the tag) or
 # by pushing a tag by hand. Two artifacts per release, never an npm package:
 #   ghcr.io/<repo>:vX.Y.Z  (linux/amd64 + linux/arm64)
-#   nestjs-observe-vX.Y.Z-<platform>.tar.gz  (+ SHA256SUMS, attestations, SBOM)
+#   nestjs-openobserve-vX.Y.Z-<platform>.tar.gz  (+ SHA256SUMS, attestations, SBOM)
 
 on:
   push:
@@ -80,8 +80,8 @@ jobs:
             --compile \
             --minify \
             --target "$TARGET" \
-            --outfile dist/nestjs-observe
-          chmod +x dist/nestjs-observe
+            --outfile dist/nestjs-openobserve
+          chmod +x dist/nestjs-openobserve
 
       - name: Assemble the tarball
         env:
@@ -89,9 +89,9 @@ jobs:
           TAG: ${{ needs.version.outputs.tag }}
         run: |
           set -euo pipefail
-          name="nestjs-observe-${TAG}-${PLATFORM}"
+          name="nestjs-openobserve-${TAG}-${PLATFORM}"
           mkdir -p "dist/${name}"
-          cp dist/nestjs-observe "dist/${name}/nestjs-observe"
+          cp dist/nestjs-openobserve "dist/${name}/nestjs-openobserve"
           cp -r apps/web/dist "dist/${name}/web"
           cp -r apps/server/drizzle "dist/${name}/drizzle"
           cp README.md LICENSE NOTICE .env.example docker-compose.yml "dist/${name}/"
@@ -223,8 +223,8 @@ jobs:
             ```bash
             curl -fsSLO <release asset>
             sha256sum -c SHA256SUMS.txt
-            tar xzf nestjs-observe-${{ needs.version.outputs.tag }}-linux-x64.tar.gz
-            ./nestjs-observe-*/nestjs-observe
+            tar xzf nestjs-openobserve-${{ needs.version.outputs.tag }}-linux-x64.tar.gz
+            ./nestjs-openobserve-*/nestjs-openobserve
             ```
 
             Set `OBSERVE_WEB_DIR` and `OBSERVE_MIGRATIONS_DIR` to the extracted

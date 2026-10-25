@@ -433,9 +433,9 @@ paths; treat unknown span tags as opaque. See
 
 **No npm package.** Two artifacts, both from GitHub Releases:
 
-1. **Container image** — `ghcr.io/<org>/nestjs-observe:{vX.Y.Z, vX.Y, vX, latest, sha-<short>}`,
+1. **Container image** — `ghcr.io/<org>/nestjs-openobserve:{vX.Y.Z, vX.Y, vX, latest, sha-<short>}`,
    `linux/amd64` + `linux/arm64`, distroless-ish runtime, SBOM + provenance.
-2. **`tar.gz` per platform** — `nestjs-observe-vX.Y.Z-linux-x64.tar.gz` etc.,
+2. **`tar.gz` per platform** — `nestjs-openobserve-vX.Y.Z-linux-x64.tar.gz` etc.,
    containing a `bun build --compile` binary + `LICENSE` + `README` +
    `docker-compose.yml` + `install.sh`, plus `SHA256SUMS` and `cosign`/gh
    attestations.

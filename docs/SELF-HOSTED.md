@@ -85,21 +85,21 @@ Every step links to the page that performs it. Nothing is a modal wall.
 
 ## 3. The CLI
 
-The same binary, different argv. `nestjs-observe admin …` — because the
+The same binary, different argv. `nestjs-openobserve admin …` — because the
 alternative is "SSH into the container and run SQL", and that is how self-hosted
 products acquire a reputation.
 
 ```
-nestjs-observe admin create-user --email --role --password-stdin
-nestjs-observe admin reset-password --email [--password-stdin]
-nestjs-observe admin invite --email --role
-nestjs-observe admin list-users
-nestjs-observe admin disable-registration
-nestjs-observe admin set-setting <key> <json>
-nestjs-observe admin migrate [--dry-run]      # apply migrations, print the plan
-nestjs-observe admin prune [--dry-run]        # enforce retention now
-nestjs-observe admin info                     # versions, counts, DB size, retention
-nestjs-observe admin export > backup.json     # settings + users, not telemetry
+nestjs-openobserve admin create-user --email --role --password-stdin
+nestjs-openobserve admin reset-password --email [--password-stdin]
+nestjs-openobserve admin invite --email --role
+nestjs-openobserve admin list-users
+nestjs-openobserve admin disable-registration
+nestjs-openobserve admin set-setting <key> <json>
+nestjs-openobserve admin migrate [--dry-run]      # apply migrations, print the plan
+nestjs-openobserve admin prune [--dry-run]        # enforce retention now
+nestjs-openobserve admin info                     # versions, counts, DB size, retention
+nestjs-openobserve admin export > backup.json     # settings + users, not telemetry
 ```
 
 Rule: **every operation the UI can perform on identity has a CLI equivalent.**
