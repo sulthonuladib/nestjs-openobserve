@@ -30,18 +30,20 @@ designed yet · **Removed** — deliberately out of scope (pricing only)
 
 | Upstream capability | Status | Notes |
 |---|---|---|
-| Email + password sign-up / sign-in | Partial | schema + `Bun.password` argon2id; no routes yet |
-| Session tokens, refresh, revocation | Partial | `session` table with token *hash*; no middleware |
-| First-run admin bootstrap | Missing | needs an unauthenticated `setup` guarded by "no users exist" |
-| Teams (a collection of users) | Missing | `team` table added; no routes |
-| Project ↔ team ownership | Partial | `project.teamId` added; unused |
-| Project members with access levels **Read / Write / Admin** | Missing | `project_member` added; **the upstream model is Read/Write/Admin**, not owner/admin/member — align, see below |
-| Issue author retains control regardless of role | Missing | rule, not a table |
+| Email + password sign-up / sign-in | **Built** | `POST /api/v1/auth/{setup,login,logout}`, argon2id, email enumeration not distinguishable |
+| Session tokens, revocation | **Built** | opaque 256-bit cookie, sha256 stored, 30-day expiry, "log out everywhere" on password reset |
+| First-run admin bootstrap | **Built** | `/setup` self-locks; `OBSERVE_ADMIN_EMAIL`/`PASSWORD` for IaC. Both tested |
+| Teams (a collection of users) | **Removed** | a tenant layer for a product with one tenant — see `SELF-HOSTED.md` §1 |
+| Project ↔ team ownership | **Removed** | follows from the above; `project.teamId` kept nullable for a future multi-tenant mode |
+| Project members with access levels **Read / Write / Admin** | Partial | schema + macros in place; no members UI or project-scoped enforcement yet |
+| Issue author retains control regardless of role | Missing | rule, not a table; blocked on issues |
 | SSO / SAML enforcement per verified domain | Missing | M4 |
-| Invitations + "pending" members | Missing | |
-| Tags (team-owned labels on applications) | Missing | |
+| Invitations (single-use, 7 days, role bound server-side) | **Built** | API + CLI; no SMTP needed |
+| Tags (labels on applications) | Missing | |
 | Per-user 2FA | Missing | hosted app has it; not in the docs' access table |
 | Notification inbox | Missing | `notifications` route exists upstream |
+| Audit log | **Built** | `audit_log`, written by setup/login/invite/role/settings changes; API + `admin` CLI |
+| Admin CLI | **Built** | `admin {info,create-user,reset-password,list-users,invite,set-setting,migrate,prune}` |
 | Billing / plans / seats / spend caps / cost attribution | **Removed** | see `PLAN.md` §3.2 |
 
 ### Correction found while reading the docs
@@ -172,8 +174,8 @@ Needs: tool catalog (query telemetry, issues, alerts), token issuing
 
 ## Score
 
-Of 74 documented capabilities: **13 built, 14 partial, 14 spec'd, 32 missing,
-1 blocked upstream (profiler), 8 removed as pricing.**
+Of 74 documented capabilities: **21 built, 13 partial, 13 spec'd, 22 missing,
+1 blocked upstream (profiler), 6 removed (pricing + SaaS tenancy).**
 
 The plan's M1 (auth, teams, RBAC) and M3 (SLOs, alerts, issues) are the bulk of
 the gap. Nothing is *unknown* any more — the remaining work is implementation,

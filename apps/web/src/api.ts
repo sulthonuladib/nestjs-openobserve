@@ -122,3 +122,34 @@ export type ErrorGroupRow = ErrorsResult["items"][number];
 
 type HealthResult = Awaited<ReturnType<typeof api.health>>;
 export type Health = HealthResult;
+
+/**
+ * Auth surface. Kept in the same Eden client so a change to the setup payload or
+ * the invite response is a compile error here too.
+ */
+export const auth = {
+  status: () => unwrap(client.api.v1.auth.status.get()),
+
+  setup: (input: {
+    email: string;
+    password: string;
+    name?: string;
+    instanceName?: string;
+  }) => unwrap(client.api.v1.auth.setup.post(input)),
+
+  login: (input: { email: string; password: string }) =>
+    unwrap(client.api.v1.auth.login.post(input)),
+
+  logout: () => unwrap(client.api.v1.auth.logout.post()),
+
+  me: () => unwrap(client.api.v1.me.get()),
+
+  describeInvite: (token: string) =>
+    unwrap(client.api.v1.auth.invite({ token }).get()),
+
+  acceptInvite: (token: string, input: { password: string; name?: string }) =>
+    unwrap(client.api.v1.auth.invite({ token }).post(input)),
+};
+
+export type AuthStatus = Awaited<ReturnType<typeof auth.status>>;
+export type SessionUser = Awaited<ReturnType<typeof auth.me>>["user"];

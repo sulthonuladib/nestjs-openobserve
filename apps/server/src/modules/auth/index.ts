@@ -48,11 +48,30 @@ export const authModule = (deps: { config: Config; db: Db }) =>
     })
 
     /** Drives the SPA's first screen: setup wizard, login, or the app. */
-    .get("/status", async ({ db }) => ({
-      setupRequired: await Auth.setupRequired(db),
-      registration: await Auth.registrationMode(db),
-      instanceName: await Auth.getSetting(db, "instanceName", "Observe"),
-    }))
+    .get(
+      "/status",
+      async ({ db }) => ({
+        setupRequired: await Auth.setupRequired(db),
+        registration: await Auth.registrationMode(db),
+        instanceName: await Auth.getSetting(db, "instanceName", "Observe"),
+      }),
+      {
+        // An explicit response schema, so the SPA's inferred client knows the
+        // 200 shape and does not have to union it with the error body.
+        response: {
+          200: t.Object({
+            setupRequired: t.Boolean(),
+            registration: t.Union([
+              t.Literal("closed"),
+              t.Literal("invite"),
+              t.Literal("open"),
+            ]),
+            instanceName: t.String(),
+          }),
+        },
+        detail: { summary: "Whether the instance is set up, and how people join" },
+      },
+    )
 
     .post(
       "/setup",

@@ -12,7 +12,7 @@
 import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { staticPlugin } from "@elysiajs/static";
-import { Elysia } from "elysia";
+import { Elysia, t } from "elysia";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./plugins/config";
@@ -88,6 +88,20 @@ export function createApiApp(deps: Deps) {
     .group("/api/v1", (api) =>
       api.use(authGuard(deps)).guard({ requireUser: true }, (guarded) =>
         guarded
+          // The SPA's session probe: who am I, and may I administer the instance.
+          .get("/me", ({ user }) => ({ user }), {
+            requireUser: true,
+            response: {
+              200: t.Object({
+                user: t.Object({
+                  id: t.String(),
+                  email: t.String(),
+                  name: t.Union([t.String(), t.Null()]),
+                  role: t.Union([t.Literal("read"), t.Literal("write"), t.Literal("admin")]),
+                }),
+              }),
+            },
+          })
           .use(applicationsModule(deps))
           .use(executionsModule(deps))
           .use(errorsModule(deps))
