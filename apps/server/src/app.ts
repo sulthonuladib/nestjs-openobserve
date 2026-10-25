@@ -18,6 +18,7 @@ import { join } from "node:path";
 import type { Config } from "./plugins/config";
 import type { Db } from "./plugins/database";
 import { adminModule } from "./modules/admin";
+import { analyticsModule } from "./modules/analytics";
 import { applicationsModule } from "./modules/applications";
 import { authModule } from "./modules/auth";
 import { errorsModule } from "./modules/errors";
@@ -103,6 +104,7 @@ export function createApiApp(deps: Deps) {
             },
           })
           .use(applicationsModule(deps))
+          .use(analyticsModule(deps))
           .use(executionsModule(deps))
           .use(errorsModule(deps))
           .use(logsModule(deps))

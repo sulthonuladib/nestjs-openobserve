@@ -1,37 +1,49 @@
 @import "tailwindcss";
 
 /*
- * Tokens, not hex values in components. The dashboard is dark by default
- * because that is what an operator staring at traces at 3am wants, and light
- * is one class on <html> away.
+ * Tokens taken from the reference dashboard: near-black with a warm red cast,
+ * one hot pink accent, everything else greyscale. Cards are lighter than the
+ * page by a hair, borders are 6% white — the hierarchy comes from spacing and
+ * type size, not from colour.
  */
 @theme {
-  --color-surface: oklch(0.19 0.012 265);
-  --color-surface-raised: oklch(0.23 0.014 265);
-  --color-surface-hover: oklch(0.27 0.016 265);
-  --color-border-subtle: oklch(0.32 0.015 265);
-  --color-ink: oklch(0.94 0.005 265);
-  --color-ink-muted: oklch(0.68 0.012 265);
-  --color-ink-faint: oklch(0.52 0.012 265);
-  --color-accent: oklch(0.72 0.15 320);
-  --color-ok: oklch(0.74 0.15 155);
-  --color-warn: oklch(0.8 0.15 85);
-  --color-danger: oklch(0.68 0.19 25);
+  --color-surface: oklch(0.135 0.012 15);
+  --color-surface-raised: oklch(0.175 0.014 15);
+  --color-surface-hover: oklch(0.215 0.016 15);
+  --color-border-subtle: oklch(0.32 0.012 15 / 0.55);
+  --color-ink: oklch(0.96 0.004 20);
+  --color-ink-muted: oklch(0.72 0.012 20);
+  --color-ink-faint: oklch(0.55 0.014 20);
+  --color-accent: oklch(0.66 0.25 12);
+  --color-accent-soft: oklch(0.66 0.25 12 / 0.16);
+  --color-ok: oklch(0.78 0.14 155);
+  --color-warn: oklch(0.82 0.15 85);
+  --color-danger: oklch(0.66 0.24 18);
 }
 
 html.light {
-  --color-surface: oklch(0.99 0.002 265);
-  --color-surface-raised: oklch(0.97 0.003 265);
-  --color-surface-hover: oklch(0.94 0.005 265);
-  --color-border-subtle: oklch(0.88 0.006 265);
-  --color-ink: oklch(0.24 0.012 265);
-  --color-ink-muted: oklch(0.46 0.012 265);
-  --color-ink-faint: oklch(0.58 0.012 265);
-  --color-accent: oklch(0.55 0.18 320);
+  --color-surface: oklch(0.98 0.003 20);
+  --color-surface-raised: oklch(0.955 0.004 20);
+  --color-surface-hover: oklch(0.92 0.006 20);
+  --color-border-subtle: oklch(0.87 0.006 20);
+  --color-ink: oklch(0.22 0.01 20);
+  --color-ink-muted: oklch(0.44 0.012 20);
+  --color-ink-faint: oklch(0.58 0.012 20);
+  --color-accent: oklch(0.55 0.21 12);
+  --color-accent-soft: oklch(0.55 0.21 12 / 0.1);
 }
 
 * {
   border-color: var(--color-border-subtle);
+}
+
+body {
+  /* Faint grain, like the reference. Two offset radial gradients are enough and
+     cost nothing: no image request, no blend mode. */
+  background-image:
+    radial-gradient(circle at 18% 8%, oklch(0.35 0.12 12 / 0.16), transparent 42%),
+    radial-gradient(circle at 82% 0%, oklch(0.4 0.14 350 / 0.1), transparent 38%);
+  background-attachment: fixed;
 }
 
 :focus-visible {
@@ -41,4 +53,21 @@ html.light {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* The reference uses letter-spaced small caps for every card label. */
+.label-caps {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-hover);
+  border-radius: 9999px;
 }

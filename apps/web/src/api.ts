@@ -80,6 +80,29 @@ export const api = {
   setErrorStatus: (id: string, status: "open" | "resolved" | "ignored") =>
     unwrap(client.api.v1.errors({ id }).patch({ status })),
 
+  application: (id: string) => unwrap(client.api.v1.applications({ id }).get()),
+
+  timeseries: (appId: string, w: Window & { bucketMs?: number }) =>
+    unwrap(client.api.v1.applications({ id: appId }).timeseries.get({ query: w })),
+
+  jobs: (appId: string, w: Window) =>
+    unwrap(client.api.v1.applications({ id: appId }).jobs.get({ query: w })),
+
+  metrics: (appId: string) =>
+    unwrap(client.api.v1.applications({ id: appId }).metrics.get()),
+
+  metricPoints: (appId: string, name: string, w: Window) =>
+    unwrap(client.api.v1.applications({ id: appId }).metrics({ name }).get({ query: w })),
+
+  runtime: (appId: string, w: Window) =>
+    unwrap(client.api.v1.applications({ id: appId }).runtime.get({ query: w })),
+
+  releases: (appId: string, w: Window) =>
+    unwrap(client.api.v1.applications({ id: appId }).releases.get({ query: w })),
+
+  users: (appId: string, w: Window) =>
+    unwrap(client.api.v1.applications({ id: appId }).users.get({ query: w })),
+
   logs: (
     appId: string,
     w: Window & {
@@ -122,6 +145,21 @@ export type ErrorGroupRow = ErrorsResult["items"][number];
 
 type HealthResult = Awaited<ReturnType<typeof api.health>>;
 export type Health = HealthResult;
+
+type SeriesResult = Awaited<ReturnType<typeof api.timeseries>>;
+export type SeriesPoint = SeriesResult["points"][number];
+
+type JobsResult = Awaited<ReturnType<typeof api.jobs>>;
+export type JobRow = JobsResult[number];
+
+type ReleasesResult = Awaited<ReturnType<typeof api.releases>>;
+export type ReleaseRow = ReleasesResult[number];
+
+type UsersResult = Awaited<ReturnType<typeof api.users>>;
+export type UserRow = UsersResult[number];
+
+type MetricsResult = Awaited<ReturnType<typeof api.metrics>>;
+export type MetricRow = MetricsResult[number];
 
 /**
  * Auth surface. Kept in the same Eden client so a change to the setup payload or
