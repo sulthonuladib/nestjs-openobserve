@@ -1,7 +1,6 @@
 # Never ship the vendored SDK source in a release tarball produced by
 # `git archive` / `git archive --format=tar.gz`.
 /repos export-ignore
-/.prompts export-ignore
 /.github export-ignore
 /docs export-ignore
 *.md export-ignore
