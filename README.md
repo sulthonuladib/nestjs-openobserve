@@ -44,7 +44,7 @@ device-code flow:
 OBSERVE_ENDPOINT=http://localhost:4319 npx @nestjs/observe link
 ```
 
-It prints a code, you approve it at `http://localhost:4320/dashboard/link`, and it
+It prints a code, you approve it at `http://localhost:4320/#/link`, and it
 writes `OBSERVE_APP_KEY` / `OBSERVE_APP_SECRET` into the app's `.env`.
 
 Single-port deployment (one reverse proxy in front):

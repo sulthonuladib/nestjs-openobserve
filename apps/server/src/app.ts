@@ -117,6 +117,42 @@ export function createApiApp(deps: Deps) {
   const webRoot = resolveWebRoot();
   if (webRoot) {
     app.use(staticPlugin({ assets: webRoot, prefix: "/" }));
+
+    /**
+     * SPA fallback for path-style deep links.
+     *
+     * The router is hash-based (`#/link`), but the CLI, a runbook or a bookmark
+     * may still say `/dashboard/link`. Without this, the static handler answers
+     * 404 for any path that is not a real file — which is how the device-code
+     * verification URI ends up broken for the one person who needs it. Anything
+     * under `/api`, `/health` or `/assets` keeps its real 404: a misspelled API
+     * route must not return HTML.
+     */
+    app.get(
+      "*",
+      ({ request, set }) => {
+        const { pathname } = new URL(request.url);
+        if (
+          pathname.startsWith("/api") ||
+          pathname.startsWith("/health") ||
+          pathname.startsWith("/assets")
+        ) {
+          set.status = 404;
+          return { message: "not found" };
+        }
+        set.headers["content-type"] = "text/html; charset=utf-8";
+        if (pathname.startsWith("/dashboard")) {
+          // Rewrite to the hash route so the client router lands on the page the
+          // path meant, instead of on the overview.
+          const page = pathname.replace(/^\/dashboard\/?/, "") || "";
+          set.status = 302;
+          set.headers.location = `/${page ? `#/${page}` : "#/"}`;
+          return null;
+        }
+        return Bun.file(`${webRoot}/index.html`);
+      },
+      { detail: { hide: true } },
+    );
   }
 
   return app;

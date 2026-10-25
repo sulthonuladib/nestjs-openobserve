@@ -119,7 +119,7 @@ Keys are scoped to a **project**, and the `link` flow issues them:
 OBSERVE_ENDPOINT=http://localhost:4319 npx @nestjs/observe link
 ```
 
-It prints a code; type it at `http://localhost:4320/dashboard/link` (the
+It prints a code; type it at `http://localhost:4320/#/link` (the
 verification URL it prints), approve it, and the CLI writes `OBSERVE_APP_KEY` /
 `OBSERVE_APP_SECRET` into the app's `.env` and wires `--env-file` into its start
 scripts. Then turn anonymous ingest off:

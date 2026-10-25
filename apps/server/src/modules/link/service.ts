@@ -89,7 +89,11 @@ export abstract class Link {
       userCode: row.userCode,
       // The page the operator opens. It deliberately does not carry the code: a
       // link that approves itself is not a confirmation.
-      verificationUri: `${config.publicUrl}/dashboard/link`,
+      // The dashboard is hash-routed (`#/link`), so the URI has to carry the
+      // fragment. A path-style `/dashboard/link` is still served — the SPA
+      // fallback in `app.ts` rewrites it — but the fragment is what actually
+      // selects the page, and the CLI prints this string verbatim.
+      verificationUri: `${config.publicUrl}/#/link`,
       expiresIn: EXPIRES_IN_SECONDS,
       interval: POLL_INTERVAL_SECONDS,
     };
