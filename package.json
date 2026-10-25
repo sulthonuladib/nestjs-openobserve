@@ -21,7 +21,8 @@
     "test": "bun test test packages apps",
     "test:conformance": "bun test test/conformance",
     "db:migrate": "bun apps/server/src/db/migrate.ts",
-    "admin": "bun apps/server/src/index.ts admin"
+    "admin": "bun apps/server/src/index.ts admin",
+    "db:reset": "bash scripts/reset-db.sh"
   },
   "devDependencies": {
     "@observe/shared": "workspace:*",
