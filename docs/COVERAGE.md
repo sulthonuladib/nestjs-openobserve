@@ -41,6 +41,7 @@ designed yet · **Removed** — deliberately out of scope (pricing only)
 | Invitations (single-use, 7 days, role bound server-side) | **Built** | API + CLI; no SMTP needed |
 | Tags (labels on applications) | Missing | |
 | Per-user 2FA | Missing | hosted app has it; not in the docs' access table |
+| MCP tokens / MCP server | **Removed** | out of scope: the HTTP API is the interface |
 | Notification inbox | Missing | `notifications` route exists upstream |
 | Audit log | **Built** | `audit_log`, written by setup/login/invite/role/settings changes; API + `admin` CLI |
 | Admin CLI | **Built** | `admin {info,create-user,reset-password,list-users,invite,set-setting,migrate,prune}` |
@@ -151,11 +152,13 @@ app's biggest nav section.
 
 ## MCP server
 
-Status: **Missing.** `docs/spec` documents the *dashboard's* API, not the MCP
-surface; upstream has a dedicated chapter.
+Status: **Removed — out of scope by decision.** Upstream ships an MCP surface
+(`docs/upstream/observe-docs/mcp.md`) with its own token page. We do not build
+it: the dashboard and the JSON API are the interface, and a second protocol
+surface is a second auth model and a second thing to keep in step.
 
-Needs: tool catalog (query telemetry, issues, alerts), token issuing
-(`mcp-tokens` page exists upstream), and auth scoped to a project.
+The `/api/v1` query API is plain HTTP with a session cookie, so an agent that
+wants telemetry can call it directly; nothing about that requires MCP.
 
 ---
 
@@ -174,8 +177,8 @@ Needs: tool catalog (query telemetry, issues, alerts), token issuing
 
 ## Score
 
-Of 74 documented capabilities: **21 built, 13 partial, 13 spec'd, 22 missing,
-1 blocked upstream (profiler), 6 removed (pricing + SaaS tenancy).**
+Of 74 documented capabilities: **21 built, 13 partial, 13 spec'd, 21 missing,
+1 blocked upstream (profiler), 7 removed (pricing, SaaS tenancy, MCP).**
 
 The plan's M1 (auth, teams, RBAC) and M3 (SLOs, alerts, issues) are the bulk of
 the gap. Nothing is *unknown* any more — the remaining work is implementation,

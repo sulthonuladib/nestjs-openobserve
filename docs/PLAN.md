@@ -122,7 +122,6 @@ is caught at the edge and repaired by the SDK's own sanitizer.
 | F17 | **API keys** | app key/secret pairs per application, issue once (secret shown once), revoke, rotate — and the `/link` device-code flow that makes `npx @nestjs/observe link` work against us | settings, `/link` |
 | F18 | **Projects / environments / teams** | a project scopes applications and members; env is a tag dimension | settings |
 | F19 | **Retention** | configurable per data class (traces / logs / metrics), enforced by a rollup + prune job; **operator config, not a plan** | settings |
-| F20 | **MCP endpoint** | the hosted product documents an MCP integration; expose a read-only MCP server over our query API so agents can query telemetry | `/mcp` |
 | F21 | **Auth** | first-run admin bootstrap, sessions, optional OIDC, per-role permissions | login, settings |
 | F22 | **Self-observability** | ingest lag, batch size, drops, 400-repair rate, storage size, query latency | `/admin/health` |
 
@@ -138,6 +137,7 @@ is caught at the edge and repaired by the SDK's own sanitizer.
 | Free-tier pacing (`paced`) and reduced ingest (`reduced`) | ditto | — |
 | `trimmed` spans on a "paying" account | ditto | — |
 | Trial / expired-account states | ditto | — |
+| MCP server + `mcp-tokens` | out of scope by decision — the dashboard and the JSON API are the interface | no `/mcp` route, no token page |
 
 Deleting these also deletes a surprising amount of *ingest* complexity the SDK
 expects the backend to have (`isNotableSnapshot`, `isServerErrorSnapshot`,
@@ -168,7 +168,6 @@ Legend: **P0** must ship in v0.1 · **P1** v0.2 · **P2** v0.3+ · — removed
 | F14 custom op IDs | | P0 | |
 | F15/F16 source ctx + capture | P0 (render) | | |
 | F18 projects/envs | P0 (single project) | multi P1 | |
-| F20 MCP | | | P2 |
 | F22 self-observability | P0 (`/health`) | P1 | |
 | Pricing & billing | — | — | — |
 
@@ -211,7 +210,7 @@ deduplicates them and no handler reaches for a global:
   cookies, no CORS work, gzip decode only. Its whole job is "accept bytes
   fast". Runs on its own port (default `:4319`) so it can be exposed
   separately from the dashboard (`:4320`).
-- **`apiApp`** — the dashboard JSON API + static SPA + `/mcp`.
+- **`apiApp`** — the dashboard JSON API + the static SPA.
 - **`workerApp`** — in-process: timer-driven rollups, SLO evaluation, alert
   evaluation, retention pruning. `Bun.cron` where a wall-clock schedule is
   natural, `setInterval` where it is not.
@@ -406,7 +405,7 @@ compiled binary.
 | **M0 — skeleton** | monorepo, Elysia ingest route accepting gzip batches, strict validation against `TELEMETRY_BATCH`, `{degraded:false}` reply, Postgres/Drizzle write of `execution`+`span`, `/health` | a real Nest app with the vendored SDK, `OBSERVE_ENDPOINT=http://localhost:4319`, produces rows we can `SELECT` |
 | **M1 — v0.1 "useful"** | auth, applications, operations, executions, traces, errors (grouping + source context), API keys, `/cli-link` device flow, minimal UI (overview, trace waterfall, error list) | `npx @nestjs/observe link` works against us; demo-scale data navigable |
 | **M2 — v0.2 "complete telemetry"** | logs, jobs, runtime metrics, custom metrics, releases, retention config, custom op IDs, Postgres adapter | parity with the hosted dashboard's daily-driver pages |
-| **M3 — v0.3 "SLOs & alerts"** | objectives ingestion + budgets, alerts + channels, drop filters, multi-project/envs, MCP | `@Objective()` declarations round-trip; an alert fires on a planted error |
+| **M3 — v0.3 "SLOs & alerts"** | objectives ingestion + budgets, alerts + channels, drop filters, multi-project/envs | `@Objective()` declarations round-trip; an alert fires on a planted error |
 | **M4 — hardening** | rollups, load test (5k ev/s), backup/restore, upgrades N-2, SBOM, docs site | 24h soak, restore drill passes |
 
 ---
