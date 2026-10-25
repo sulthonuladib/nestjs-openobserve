@@ -130,7 +130,7 @@ export function ExecutionDetail({ id }: { id: string }) {
   if (query.isLoading) return <Skeleton rows={10} />;
   if (!query.data) return <Empty>No such execution.</Empty>;
 
-  const { execution, logs, error } = query.data;
+  const { execution, operation, logs, error } = query.data;
   const ordered = orderTree(spans);
 
   return (
@@ -138,8 +138,8 @@ export function ExecutionDetail({ id }: { id: string }) {
       <header className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h1 className="font-mono text-lg">
-            {execution.method ? `${execution.method} ` : ""}
-            {execution.operationId ?? execution.jobName ?? execution.traceId}
+            {operation?.method ? `${operation.method} ` : ""}
+            {operation?.operationId ?? execution.jobName ?? execution.traceId}
           </h1>
           <p className="text-xs text-ink-faint">
             trace <span className="font-mono">{execution.traceId}</span> ·{" "}

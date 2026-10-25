@@ -17,12 +17,15 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./plugins/config";
 import type { Db } from "./plugins/database";
+import { adminModule } from "./modules/admin";
 import { applicationsModule } from "./modules/applications";
+import { authModule } from "./modules/auth";
 import { errorsModule } from "./modules/errors";
 import { executionsModule } from "./modules/executions";
 import { healthModule } from "./modules/health";
 import { ingestModule } from "./modules/ingest";
 import { logsModule } from "./modules/logs";
+import { authGuard } from "./plugins/auth";
 import { cliLinkModule } from "./modules/link";
 import { linkApprovalModule } from "./modules/link/approval";
 
@@ -76,13 +79,23 @@ export function createApiApp(deps: Deps) {
     .use(ingestModule(deps))
     .use(cliLinkModule(deps))
     .use(healthModule(deps))
+    // Public: /health, ingest, cli-link, and the auth endpoints the login page
+    // and the invite page call before there is a session.
+    .group("/api/v1", (api) => api.use(authModule(deps)))
+    // Everything else requires a session. `/setup` lives inside the auth module
+    // and gates itself on "no users exist", which is a stronger check than a
+    // role.
     .group("/api/v1", (api) =>
-      api
-        .use(applicationsModule(deps))
-        .use(executionsModule(deps))
-        .use(errorsModule(deps))
-        .use(logsModule(deps))
-        .use(linkApprovalModule(deps)),
+      api.use(authGuard(deps)).guard({ requireUser: true }, (guarded) =>
+        guarded
+          .use(applicationsModule(deps))
+          .use(executionsModule(deps))
+          .use(errorsModule(deps))
+          .use(logsModule(deps))
+          .guard({ requireAdmin: true }, (admin) =>
+            admin.use(linkApprovalModule(deps)).use(adminModule(deps)),
+          ),
+      ),
     );
 
   // The dashboard SPA, when a build is present. Registered last so API routes
@@ -94,3 +107,13 @@ export function createApiApp(deps: Deps) {
 
   return app;
 }
+
+/**
+ * The types the dashboard's Eden client consumes.
+ *
+ * `treaty<ApiApp>()` reads this route map, so a path, query parameter or
+ * response field the server does not have is a compile error in `apps/web`.
+ * Type-only export: the web build erases it, nothing from the server ships.
+ */
+export type ApiApp = ReturnType<typeof createApiApp>;
+export type IngestApp = ReturnType<typeof createIngestApp>;

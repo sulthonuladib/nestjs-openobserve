@@ -119,11 +119,7 @@ export const ingestModule = (deps: { config: Config; db: Db }) => new Elysia({ n
 
       const result = await Ingest.writeBatch(
         db,
-        {
-          applicationId: authed === "anonymous" ? null : authed.applicationId,
-          projectId,
-          serviceId: batch.serviceId,
-        },
+        { projectId, serviceId: batch.serviceId },
         batch,
       );
 

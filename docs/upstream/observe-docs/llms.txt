@@ -1,0 +1,28 @@
+# NestJS Observe
+
+> NestJS Observe is the official, auto-instrumented observability platform for NestJS applications - APM, distributed tracing, error monitoring, logs, alerts and SLOs. Install the `@nestjs/observe` SDK, add an API key, and the application's requests, jobs, errors, logs and traces stream to the dashboard with no manual span wiring and no collector to run.
+
+Every plan, Free included, has error monitoring, distributed tracing and auto-instrumentation. Paid plans add logs streaming, alerting and team management, and Scale and above add SSO and SLOs. A live demo of the dashboard over a busy service's data, with no signup, is at https://www.observe-demo.nestjs.com/dashboard.
+
+The pages below are the product documentation as plain markdown.
+
+## Documentation
+
+- [Overview](https://www.observe.nestjs.com/llms/overview.md): What Observe is, how teams, projects and applications fit together, and your first project.
+- [Applications](https://www.observe.nestjs.com/llms/applications.md): Projects, applications, API keys, teams, and access control.
+- [SDK](https://www.observe.nestjs.com/llms/sdk.md): Instrument your NestJS application.
+- [Telemetry](https://www.observe.nestjs.com/llms/telemetry.md): Requests, errors, jobs, traces, logs, and everything else your project dashboard shows.
+- [Traces & spans](https://www.observe.nestjs.com/llms/traces.md): The waterfall, self time, error source frames, and handing a failure to a coding agent.
+- [Using the MCP server](https://www.observe.nestjs.com/llms/mcp.md): Let an MCP-compatible agent query your telemetry, issues, and alerts directly.
+- [Users](https://www.observe.nestjs.com/llms/users.md): Per-user activity, grouped actions, and the paths between them.
+- [Profiler](https://www.observe.nestjs.com/llms/profiler.md): CPU, memory, event loop, and garbage collection per process.
+- [Alerts](https://www.observe.nestjs.com/llms/alerts.md): Get notified when your telemetry crosses a threshold.
+- [SLOs](https://www.observe.nestjs.com/llms/slos.md): Objectives and error budgets over existing telemetry.
+- [Issues](https://www.observe.nestjs.com/llms/issues.md): Track the work that comes out of your telemetry.
+- [Billing & usage](https://www.observe.nestjs.com/llms/billing.md): Plans, usage, cost attribution, and spend controls.
+- [FAQ](https://www.observe.nestjs.com/llms/faq.md): Setup, pricing and retention, data privacy, and how Observe compares to self-hosted OpenTelemetry.
+
+## Optional
+
+- [All of the above in one file](https://www.observe.nestjs.com/llms-full.txt)
+- [Observability chapter of the NestJS docs](https://docs.nestjs.com/observability/overview.md): installing and configuring the @nestjs/observe SDK in a NestJS application.

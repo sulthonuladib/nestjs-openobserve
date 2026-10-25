@@ -278,6 +278,19 @@ export abstract class Telemetry {
       .orderBy(logEntry.occurredAt)
       .limit(500);
 
+    // The execution carries `operationRowId`; the waterfall header wants the
+    // operation's own name and method, so it is joined here rather than in the
+    // browser.
+    const operationRow = row.operationRowId
+      ? (
+          await db
+            .select()
+            .from(operation)
+            .where(eq(operation.id, row.operationRowId))
+            .limit(1)
+        )[0] ?? null
+      : null;
+
     const error = row.errorGroupId
       ? (
           await db
@@ -288,7 +301,7 @@ export abstract class Telemetry {
         )[0] ?? null
       : null;
 
-    return { execution: row, spans, logs, error };
+    return { execution: row, operation: operationRow, spans, logs, error };
   }
 
   /** Every execution sharing a trace id — the cross-service waterfall. */

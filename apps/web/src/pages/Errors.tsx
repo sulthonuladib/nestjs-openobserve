@@ -126,8 +126,10 @@ export function Errors({
  * Substring search over a page is honest and instant; pretend-SQL over the whole
  * table would need a query language nobody asked for yet.
  */
+type Level = "fatal" | "error" | "warn" | "log" | "debug" | "verbose";
+
 export function Logs({ id, range }: { id: string; range: TimeRangeId }) {
-  const [level, setLevel] = useState<string>("");
+  const [level, setLevel] = useState<Level | "">("");
   const [search, setSearch] = useState("");
   const window = windowFor(range);
 
@@ -153,11 +155,11 @@ export function Logs({ id, range }: { id: string; range: TimeRangeId }) {
         />
         <select
           value={level}
-          onChange={(event) => setLevel(event.target.value)}
+          onChange={(event) => setLevel(event.target.value as Level | "")}
           className="rounded border bg-surface-raised px-2 py-1 text-sm"
         >
           <option value="">all levels</option>
-          {["fatal", "error", "warn", "log", "debug", "verbose"].map((entry) => (
+          {(["fatal", "error", "warn", "log", "debug", "verbose"] as const).map((entry) => (
             <option key={entry} value={entry}>
               {entry}
             </option>

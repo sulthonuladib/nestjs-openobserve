@@ -6,7 +6,7 @@ import type { Config } from "../../plugins/config";
 import { configPlugin } from "../../plugins/config";
 import type { Db } from "../../plugins/database";
 import { databasePlugin } from "../../plugins/database";
-import { ExecutionModel, SpanModel } from "../../db/models";
+import { ErrorModel, ExecutionModel, OperationModel, SpanModel } from "../../db/models";
 import { Telemetry, window } from "../telemetry.service";
 
 export const executionsModule = (deps: { config: Config; db: Db }) =>
@@ -51,9 +51,10 @@ export const executionsModule = (deps: { config: Config; db: Db }) =>
         response: {
           200: t.Object({
             execution: ExecutionModel.select,
+            operation: t.Union([OperationModel.select, t.Null()]),
             spans: t.Array(SpanModel.select),
             logs: t.Array(t.Any()),
-            error: t.Union([t.Any(), t.Null()]),
+            error: t.Union([ErrorModel.group, t.Null()]),
           }),
           404: t.String(),
         },

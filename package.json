@@ -2,12 +2,12 @@
   "name": "nestjs-observe-selfhosted",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
   "license": "MIT",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
+  "type": "module",
   "scripts": {
     "dev": "bun --hot apps/server/src/index.ts",
     "dev:web": "bun --filter web dev",
@@ -23,8 +23,8 @@
     "db:migrate": "bun apps/server/src/db/migrate.ts"
   },
   "devDependencies": {
+    "@observe/shared": "workspace:*",
     "@types/bun": "latest",
-    "typescript": "^7",
-    "@observe/shared": "workspace:*"
+    "typescript": "^7"
   }
 }

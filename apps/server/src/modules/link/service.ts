@@ -127,7 +127,9 @@ export abstract class Link {
 
     await db.insert(appCredential).values({
       id: Bun.randomUUIDv7(),
-      applicationId: session.applicationId,
+      // Keys belong to the project; the application is implied by the key the
+      // CLI writes into the app's `.env`, and resolved per batch from serviceId.
+      projectId: session.projectId ?? (await Ingest.ensureDefaultProject(db)),
       keyPrefix: keyPrefix(appKey),
       keyHash: await sha256(appKey),
       secretHash: await Ingest.hashSecret(appSecret),

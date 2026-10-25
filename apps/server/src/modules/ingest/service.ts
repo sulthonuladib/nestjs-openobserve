@@ -41,16 +41,18 @@ export interface Credentials {
   readonly appSecret: string;
 }
 
-export interface AuthedApplication {
-  readonly applicationId: string;
+/**
+ * API keys are scoped to a **project** (upstream docs, Applications → API keys):
+ * "any application whose telemetry should land in that project's dashboard uses
+ * the same key". The application is therefore resolved per batch from the
+ * `serviceId` the agent sends, not from the credential.
+ */
+export interface AuthedProject {
   readonly projectId: string;
-  readonly serviceId: string;
   readonly credentialId: string;
 }
 
 export interface WriteTarget {
-  /** `null` in anonymous mode: the service id creates or claims the application. */
-  readonly applicationId: string | null;
   readonly projectId: string;
   readonly serviceId: string;
 }
@@ -124,19 +126,16 @@ export abstract class Ingest {
     db: Db,
     credentials: Credentials | null,
     allowAnonymous: boolean,
-  ): Promise<AuthedApplication | "anonymous" | null> {
+  ): Promise<AuthedProject | "anonymous" | null> {
     if (!credentials) return allowAnonymous ? "anonymous" : null;
 
     const rows = await db
       .select({
         credentialId: appCredential.id,
-        applicationId: application.id,
-        projectId: application.projectId,
-        serviceId: application.serviceId,
+        projectId: appCredential.projectId,
         secretHash: appCredential.secretHash,
       })
       .from(appCredential)
-      .innerJoin(application, eq(application.id, appCredential.applicationId))
       .where(
         and(
           eq(appCredential.keyPrefix, keyPrefix(credentials.appKey)),
@@ -158,12 +157,7 @@ export abstract class Ingest {
       .where(eq(appCredential.id, row.credentialId))
       .catch(() => undefined);
 
-    return {
-      credentialId: row.credentialId,
-      applicationId: row.applicationId,
-      projectId: row.projectId,
-      serviceId: row.serviceId,
-    };
+    return { credentialId: row.credentialId, projectId: row.projectId };
   }
 
   static async writeBatch(
@@ -174,9 +168,12 @@ export abstract class Ingest {
   ): Promise<WriteResult> {
     return db.transaction(async (tx) => {
       const exec = tx as unknown as Executor;
-      const applicationId =
-        target.applicationId ??
-        (await ensureApplication(exec, target.projectId, target.serviceId, now));
+      const applicationId = await ensureApplication(
+        exec,
+        target.projectId,
+        target.serviceId,
+        now,
+      );
 
       const releaseId = batch.serviceVersion
         ? await ensureRelease(exec, applicationId, batch.serviceVersion, now)
@@ -651,6 +648,7 @@ async function writeJob(
   );
 
   const executionId = Bun.randomUUIDv7();
+  const wireError = job.e && typeof job.e !== "boolean" ? (job.e as WireError) : undefined;
 
   await db.insert(execution).values({
     id: executionId,
@@ -673,13 +671,6 @@ async function writeJob(
     tags: job.tg ?? {},
     spanCount: countSpans(job.t),
   });
-
-  const errorGroupId = job.e
-    ? await writeError(db, applicationId, executionId, releaseId, job.e as WireError, now)
-    : null;
-  if (errorGroupId) {
-    await db.update(execution).set({ errorGroupId }).where(eq(execution.id, executionId));
-  }
 
   const spans = await writeSpans(db, executionId, job.t);
 

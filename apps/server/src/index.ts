@@ -8,10 +8,18 @@
  * deployment behind one reverse proxy.
  */
 import { createApiApp, createIngestApp, type Deps } from "./app";
+import { runAdminCli } from "./cli";
+import { bootstrapAdmin } from "./modules/auth/service";
 import { loadConfig } from "./plugins/config";
 import { connectDatabase } from "./plugins/database";
 
 const MAX_BATCH_BYTES = 32 * 1024 * 1024; // the wire allows 5000 entries/section
+
+// `nestjs-observe admin …` is the same binary with a different argv: no second
+// artifact to ship, and the operator's muscle memory works on any host.
+if (process.argv[2] === "admin") {
+  process.exit(await runAdminCli(process.argv.slice(3)));
+}
 
 const config = loadConfig();
 const connection = await connectDatabase({
@@ -19,6 +27,10 @@ const connection = await connectDatabase({
   runMigrations: config.runMigrations,
   maxConnections: config.databasePoolSize,
 });
+
+// IaC path: create (or rotate) the instance admin from the environment so
+// /setup never appears in a container deployment.
+await bootstrapAdmin(connection.db, config);
 
 const deps: Deps = { config, db: connection.db };
 

@@ -44,6 +44,7 @@ export const project = pgTable("project", {
   id: pk(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  teamId: uuid("team_id").references(() => team.id, { onDelete: "set null" }),
   settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: ms("created_at").notNull(),
 });
@@ -54,9 +55,14 @@ export const user = pgTable("app_user", {
   name: text("name"),
   /** argon2id, via `Bun.password`. Null until the first-run admin sets one. */
   passwordHash: text("password_hash"),
-  role: text("role", { enum: ["owner", "admin", "member"] })
+  /**
+   * Instance-wide role. Project and team roles are per membership: an operator
+   * can be an admin of the instance and a viewer of somebody else's project.
+   */
+  /** Instance role. The first user to bootstrap the server becomes `admin`. */
+  role: text("role", { enum: ["read", "write", "admin"] })
     .notNull()
-    .default("member"),
+    .default("write"),
   createdAt: ms("created_at").notNull(),
   lastLoginAt: ms("last_login_at"),
 });
@@ -70,6 +76,7 @@ export const session = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     /** SHA-256 of the cookie value: a session token is not stored in clear. */
     tokenHash: text("token_hash").notNull(),
+    userAgent: text("user_agent"),
     expiresAt: ms("expires_at").notNull(),
     createdAt: ms("created_at").notNull(),
   },
@@ -77,6 +84,57 @@ export const session = pgTable(
     uniqueIndex("session_token").on(table.tokenHash),
     index("session_expires").on(table.expiresAt),
   ],
+);
+
+/** A team groups projects and people. Every install has at least one. */
+export const team = pgTable(
+  "team",
+  {
+    id: pk(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull().unique(),
+    createdAt: ms("created_at").notNull(),
+  },
+  (table) => [uniqueIndex("team_slug").on(table.slug)],
+);
+
+/**
+ * Roles, narrowest to widest:
+ *   viewer  read only
+ *   member  read + resolve/ignore errors, acknowledge alerts
+ *   admin   + manage applications, api keys, alert rules, members
+ *   owner   + delete the project, transfer ownership
+ */
+export const teamMember = pgTable(
+  "team_member",
+  {
+    teamId: uuid("team_id")
+      .notNull()
+      .references(() => team.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Read / Write / Admin — the upstream model, verbatim. */
+    role: text("role", { enum: ["read", "write", "admin"] }).notNull(),
+    createdAt: ms("created_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.teamId, table.userId] })],
+);
+
+export const projectMember = pgTable(
+  "project_member",
+  {
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Read / Write / Admin. "Creator only" rules are separate checks, not roles. */
+    role: text("role", { enum: ["read", "write", "admin"] }).notNull(),
+    createdAt: ms("created_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.projectId, table.userId] })],
 );
 
 export const application = pgTable(
@@ -102,9 +160,15 @@ export const appCredential = pgTable(
   "app_credential",
   {
     id: pk(),
-    applicationId: uuid("application_id")
+    /**
+     * Scoped to a **project**, not an application — the upstream documentation is
+     * explicit: "any application whose telemetry should land in that project's
+     * dashboard uses the same key". The application is resolved per batch from
+     * the `serviceId` the agent sends.
+     */
+    projectId: uuid("project_id")
       .notNull()
-      .references(() => application.id, { onDelete: "cascade" }),
+      .references(() => project.id, { onDelete: "cascade" }),
     /**
      * The full `appKey` is not a secret in the SDK's model (it identifies the
      * application); the secret is. We still look the key up by prefix and
@@ -246,6 +310,19 @@ export const execution = pgTable(
     durationMs: doublePrecision("duration_ms"),
     statusCode: integer("status_code"),
     userId: text("user_id"),
+    /**
+     * Present when the operation failed. `errorGroupId` is set only for
+     * requests: a failed job does not open an error group (see
+     * `docs/upstream/observe-docs/alerts.md`), so a job keeps its error payload
+     * here and nowhere else.
+     */
+    error: jsonb("error").$type<{
+      cls?: string;
+      message: string;
+      stack?: string;
+      tags?: Record<string, string | number | boolean>;
+      codeFrames?: Array<{ file: string; line: number; firstLine: number; lines: string[] }>;
+    }>(),
     errorGroupId: uuid("error_group_id").references(() => errorGroup.id, {
       onDelete: "set null",
     }),
@@ -322,9 +399,16 @@ export const errorOccurrence = pgTable(
     releaseId: uuid("release_id").references(() => release.id, { onDelete: "set null" }),
     occurredAt: ms("occurred_at").notNull(),
     stack: text("stack"),
-    /** Frame source the agent read from its own process (`sourceContext`). */
-    sourceContext: jsonb("source_context").$type<
-      Array<{ file: string; line: number | null; source: string | null }>
+    /**
+     * Source around each in-app stack frame, read by the agent from its own
+     * process (`createObserveModule({ sourceContext })`). The wire field is
+     * `e.codeFrames`, and the frame shape is fixed by the SDK:
+     *   { file, line, firstLine, lines[] }
+     * It is the only way to show the failing code, because the collector cannot
+     * read the customer's filesystem — and it is already redacted by the agent.
+     */
+    codeFrames: jsonb("code_frames").$type<
+      Array<{ file: string; line: number; firstLine: number; lines: string[] }>
     >(),
   },
   (table) => [
@@ -544,6 +628,65 @@ export const dropFilter = pgTable("drop_filter", {
   enabled: boolean("enabled").notNull().default(true),
   createdAt: ms("created_at").notNull(),
 });
+
+/**
+ * One row per setting. A new option is a row, not a migration — self-hosted
+ * products accrete switches, and a migration per checkbox is a maintenance tax
+ * nobody pays.
+ *
+ * Precedence: environment variable (bootstrap values only) > this table > code
+ * default. See `docs/SELF-HOSTED.md` §4.
+ */
+export const instanceSetting = pgTable("instance_setting", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: ms("updated_at").notNull(),
+  updatedBy: uuid("updated_by").references(() => user.id, { onDelete: "set null" }),
+});
+
+/**
+ * An invite is a single-use URL that carries no privilege: the role is bound
+ * here, server-side. Valid for seven days.
+ */
+export const invite = pgTable(
+  "invite",
+  {
+    id: pk(),
+    /** SHA-256 of the token in the URL, never the token itself. */
+    tokenHash: text("token_hash").notNull(),
+    email: text("email").notNull(),
+    /** Instance role granted on acceptance. */
+    role: text("role", { enum: ["read", "write", "admin"] }).notNull().default("write"),
+    invitedBy: uuid("invited_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: ms("created_at").notNull(),
+    expiresAt: ms("expires_at").notNull(),
+    acceptedAt: ms("accepted_at"),
+    acceptedBy: uuid("accepted_by").references(() => user.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    uniqueIndex("invite_token").on(table.tokenHash),
+    index("invite_email").on(table.email),
+  ],
+);
+
+/**
+ * Append-only audit trail. A self-hoster asks "who deleted that key", and the
+ * answer has to exist without a log aggregator.
+ */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: pk(),
+    at: ms("at").notNull(),
+    actorId: uuid("actor_id").references(() => user.id, { onDelete: "set null" }),
+    actorEmail: text("actor_email"),
+    action: text("action").notNull(),
+    target: text("target"),
+    detail: jsonb("detail"),
+    ip: text("ip"),
+  },
+  (table) => [index("audit_log_at").on(table.at.desc())],
+);
 
 /**
  * Retention is operator configuration, not a plan. `days = 0` keeps forever,

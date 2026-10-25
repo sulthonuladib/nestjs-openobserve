@@ -25,7 +25,7 @@ CREATE TABLE "alert_rule" (
 --> statement-breakpoint
 CREATE TABLE "app_credential" (
 	"id" uuid PRIMARY KEY NOT NULL,
-	"application_id" uuid NOT NULL,
+	"project_id" uuid NOT NULL,
 	"key_prefix" text NOT NULL,
 	"key_hash" text NOT NULL,
 	"secret_hash" text NOT NULL,
@@ -43,6 +43,17 @@ CREATE TABLE "application" (
 	"name" text,
 	"first_seen" bigint NOT NULL,
 	"last_seen" bigint NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "audit_log" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"at" bigint NOT NULL,
+	"actor_id" uuid,
+	"actor_email" text,
+	"action" text NOT NULL,
+	"target" text,
+	"detail" jsonb,
+	"ip" text
 );
 --> statement-breakpoint
 CREATE TABLE "cli_link_session" (
@@ -91,7 +102,7 @@ CREATE TABLE "error_occurrence" (
 	"release_id" uuid,
 	"occurred_at" bigint NOT NULL,
 	"stack" text,
-	"source_context" jsonb
+	"code_frames" jsonb
 );
 --> statement-breakpoint
 CREATE TABLE "execution" (
@@ -107,6 +118,7 @@ CREATE TABLE "execution" (
 	"duration_ms" double precision,
 	"status_code" integer,
 	"user_id" text,
+	"error" jsonb,
 	"error_group_id" uuid,
 	"queue" text,
 	"job_name" text,
@@ -118,6 +130,25 @@ CREATE TABLE "execution" (
 	"tags" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"request" jsonb,
 	"span_count" integer DEFAULT 0 NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "instance_setting" (
+	"key" text PRIMARY KEY NOT NULL,
+	"value" jsonb NOT NULL,
+	"updated_at" bigint NOT NULL,
+	"updated_by" uuid
+);
+--> statement-breakpoint
+CREATE TABLE "invite" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"token_hash" text NOT NULL,
+	"email" text NOT NULL,
+	"role" text DEFAULT 'write' NOT NULL,
+	"invited_by" uuid,
+	"created_at" bigint NOT NULL,
+	"expires_at" bigint NOT NULL,
+	"accepted_at" bigint,
+	"accepted_by" uuid
 );
 --> statement-breakpoint
 CREATE TABLE "log_entry" (
@@ -172,9 +203,18 @@ CREATE TABLE "project" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"slug" text NOT NULL,
+	"team_id" uuid,
 	"settings" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_at" bigint NOT NULL,
 	CONSTRAINT "project_slug_unique" UNIQUE("slug")
+);
+--> statement-breakpoint
+CREATE TABLE "project_member" (
+	"project_id" uuid NOT NULL,
+	"user_id" uuid NOT NULL,
+	"role" text NOT NULL,
+	"created_at" bigint NOT NULL,
+	CONSTRAINT "project_member_project_id_user_id_pk" PRIMARY KEY("project_id","user_id")
 );
 --> statement-breakpoint
 CREATE TABLE "release" (
@@ -225,6 +265,7 @@ CREATE TABLE "session" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"user_id" uuid NOT NULL,
 	"token_hash" text NOT NULL,
+	"user_agent" text,
 	"expires_at" bigint NOT NULL,
 	"created_at" bigint NOT NULL
 );
@@ -263,12 +304,28 @@ CREATE TABLE "span" (
 	"seq" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "team" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"slug" text NOT NULL,
+	"created_at" bigint NOT NULL,
+	CONSTRAINT "team_slug_unique" UNIQUE("slug")
+);
+--> statement-breakpoint
+CREATE TABLE "team_member" (
+	"team_id" uuid NOT NULL,
+	"user_id" uuid NOT NULL,
+	"role" text NOT NULL,
+	"created_at" bigint NOT NULL,
+	CONSTRAINT "team_member_team_id_user_id_pk" PRIMARY KEY("team_id","user_id")
+);
+--> statement-breakpoint
 CREATE TABLE "app_user" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
 	"name" text,
 	"password_hash" text,
-	"role" text DEFAULT 'member' NOT NULL,
+	"role" text DEFAULT 'write' NOT NULL,
 	"created_at" bigint NOT NULL,
 	"last_login_at" bigint,
 	CONSTRAINT "app_user_email_unique" UNIQUE("email")
@@ -277,8 +334,9 @@ CREATE TABLE "app_user" (
 ALTER TABLE "alert_event" ADD CONSTRAINT "alert_event_rule_id_alert_rule_id_fk" FOREIGN KEY ("rule_id") REFERENCES "public"."alert_rule"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "alert_rule" ADD CONSTRAINT "alert_rule_project_id_project_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."project"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "alert_rule" ADD CONSTRAINT "alert_rule_application_id_application_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."application"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "app_credential" ADD CONSTRAINT "app_credential_application_id_application_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."application"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "app_credential" ADD CONSTRAINT "app_credential_project_id_project_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."project"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "application" ADD CONSTRAINT "application_project_id_project_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."project"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_actor_id_app_user_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."app_user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cli_link_session" ADD CONSTRAINT "cli_link_session_project_id_project_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."project"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cli_link_session" ADD CONSTRAINT "cli_link_session_application_id_application_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."application"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "drop_filter" ADD CONSTRAINT "drop_filter_project_id_project_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."project"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -290,10 +348,16 @@ ALTER TABLE "execution" ADD CONSTRAINT "execution_application_id_application_id_
 ALTER TABLE "execution" ADD CONSTRAINT "execution_release_id_release_id_fk" FOREIGN KEY ("release_id") REFERENCES "public"."release"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "execution" ADD CONSTRAINT "execution_operation_row_id_operation_id_fk" FOREIGN KEY ("operation_row_id") REFERENCES "public"."operation"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "execution" ADD CONSTRAINT "execution_error_group_id_error_group_id_fk" FOREIGN KEY ("error_group_id") REFERENCES "public"."error_group"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "instance_setting" ADD CONSTRAINT "instance_setting_updated_by_app_user_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."app_user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "invite" ADD CONSTRAINT "invite_invited_by_app_user_id_fk" FOREIGN KEY ("invited_by") REFERENCES "public"."app_user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "invite" ADD CONSTRAINT "invite_accepted_by_app_user_id_fk" FOREIGN KEY ("accepted_by") REFERENCES "public"."app_user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "log_entry" ADD CONSTRAINT "log_entry_application_id_application_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."application"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "metric_point" ADD CONSTRAINT "metric_point_series_id_metric_series_id_fk" FOREIGN KEY ("series_id") REFERENCES "public"."metric_series"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "metric_series" ADD CONSTRAINT "metric_series_application_id_application_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."application"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "operation" ADD CONSTRAINT "operation_application_id_application_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."application"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "project" ADD CONSTRAINT "project_team_id_team_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."team"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "project_member" ADD CONSTRAINT "project_member_project_id_project_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."project"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "project_member" ADD CONSTRAINT "project_member_user_id_app_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "release" ADD CONSTRAINT "release_application_id_application_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."application"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retention_policy" ADD CONSTRAINT "retention_policy_project_id_project_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."project"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "runtime_sample" ADD CONSTRAINT "runtime_sample_application_id_application_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."application"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -301,10 +365,13 @@ ALTER TABLE "session" ADD CONSTRAINT "session_user_id_app_user_id_fk" FOREIGN KE
 ALTER TABLE "slo" ADD CONSTRAINT "slo_application_id_application_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."application"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "slo" ADD CONSTRAINT "slo_release_id_release_id_fk" FOREIGN KEY ("release_id") REFERENCES "public"."release"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "span" ADD CONSTRAINT "span_execution_id_execution_id_fk" FOREIGN KEY ("execution_id") REFERENCES "public"."execution"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "team_member" ADD CONSTRAINT "team_member_team_id_team_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."team"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "team_member" ADD CONSTRAINT "team_member_user_id_app_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "alert_event_rule" ON "alert_event" USING btree ("rule_id","started_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "app_credential_key" ON "app_credential" USING btree ("key_prefix");--> statement-breakpoint
 CREATE UNIQUE INDEX "application_service" ON "application" USING btree ("project_id","service_id");--> statement-breakpoint
 CREATE INDEX "application_last_seen" ON "application" USING btree ("last_seen");--> statement-breakpoint
+CREATE INDEX "audit_log_at" ON "audit_log" USING btree ("at" DESC NULLS LAST);--> statement-breakpoint
 CREATE UNIQUE INDEX "cli_link_device_code" ON "cli_link_session" USING btree ("device_code");--> statement-breakpoint
 CREATE UNIQUE INDEX "cli_link_user_code" ON "cli_link_session" USING btree ("user_code");--> statement-breakpoint
 CREATE INDEX "cli_link_status" ON "cli_link_session" USING btree ("status");--> statement-breakpoint
@@ -316,6 +383,8 @@ CREATE INDEX "execution_trace" ON "execution" USING btree ("trace_id");--> state
 CREATE INDEX "execution_operation" ON "execution" USING btree ("application_id","operation_row_id","started_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "execution_errors" ON "execution" USING btree ("error_group_id");--> statement-breakpoint
 CREATE INDEX "execution_tags" ON "execution" USING gin ("tags");--> statement-breakpoint
+CREATE UNIQUE INDEX "invite_token" ON "invite" USING btree ("token_hash");--> statement-breakpoint
+CREATE INDEX "invite_email" ON "invite" USING btree ("email");--> statement-breakpoint
 CREATE INDEX "log_time" ON "log_entry" USING btree ("application_id","occurred_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "log_trace" ON "log_entry" USING btree ("trace_id");--> statement-breakpoint
 CREATE INDEX "log_level" ON "log_entry" USING btree ("application_id","level","occurred_at" DESC NULLS LAST);--> statement-breakpoint
@@ -334,4 +403,5 @@ CREATE INDEX "session_expires" ON "session" USING btree ("expires_at");--> state
 CREATE UNIQUE INDEX "slo_identity" ON "slo" USING btree ("application_id","operation_id","kind","under_ms");--> statement-breakpoint
 CREATE INDEX "span_execution" ON "span" USING btree ("execution_id","depth","seq");--> statement-breakpoint
 CREATE INDEX "span_class" ON "span" USING btree ("class_name","method");--> statement-breakpoint
-CREATE INDEX "span_name" ON "span" USING btree ("name");
+CREATE INDEX "span_name" ON "span" USING btree ("name");--> statement-breakpoint
+CREATE UNIQUE INDEX "team_slug" ON "team" USING btree ("slug");

@@ -1,135 +1,38 @@
 /**
- * The API client.
+ * The API client — Eden, generated from the server's own types.
  *
- * Types are written by hand here rather than derived from the server, and that
- * is a deliberate trade: the server's Elysia app type is enormous (every plugin,
- * every response schema) and importing it makes the web app's typecheck as slow
- * as the server's. What we do instead is keep this file short and obvious, so a
- * field rename is a one-line fix here. `drizzle-typebox` already guarantees the
- * server's own response models match the database.
+ * `treaty<ApiApp>()` reads the Elysia app's route map, so a path, a query
+ * parameter or a response field that the server does not have is a compile error
+ * here. That is the whole point: the dashboard cannot drift from the collector,
+ * and renaming a column forces a UI fix instead of a runtime `undefined`.
  *
- * Every request goes through `request()`, so credentials, error shape and base
- * URL live in exactly one place.
+ * The one place this repo imports server code into the browser bundle is a
+ * **type-only** import, erased at build time. Nothing from the server ships.
  */
+import { treaty } from "@elysiajs/eden";
+import type { ApiApp } from "@observe/server/app";
 
-export interface ApplicationSummary {
-  id: string;
-  serviceId: string;
-  name: string;
-  lastSeen: number;
-  requests: number;
-  errorRate: number;
-  avgDurationMs: number;
-  p95DurationMs: number | null;
+const client = treaty<ApiApp>(globalThis.location?.origin ?? "http://localhost:4320");
+
+/** Unwraps Eden's `{ data, error }` into a value or a thrown `ApiError`. */
+async function unwrap<T>(
+  result: Promise<{ data: T | null; error: unknown; status: number }>,
+): Promise<T> {
+  const { data, error, status } = await result;
+  if (error) {
+    throw new ApiError(status, describe(error));
+  }
+  return data as T;
 }
 
-export interface RankedOperation {
-  operationRowId: string;
-  kind: "request" | "job";
-  operationId: string | null;
-  method: string | null;
-  customName: string | null;
-  count: number;
-  errors: number;
-  durationSum: number;
-  avgDurationMs: number;
-  p95DurationMs: number | null;
-}
-
-export interface ExecutionListItem {
-  id: string;
-  kind: "request" | "job";
-  protocol: string | null;
-  traceId: string;
-  startedAt: number;
-  durationMs: number | null;
-  statusCode: number | null;
-  errorGroupId: string | null;
-  spanCount: number;
-  operationId: string | null;
-  method: string | null;
-  queue: string | null;
-  jobName: string | null;
-}
-
-export interface SpanRow {
-  id: string;
-  executionId: string;
-  parentId: string | null;
-  spanId: string | null;
-  name: string | null;
-  origin: "manual" | "auto";
-  className: string;
-  method: string;
-  durationMs: number | null;
-  startOffsetMs: number | null;
-  error: boolean;
-  tags: Record<string, unknown>;
-  collapsedCount: number | null;
-  depth: number;
-  seq: number;
-}
-
-export interface LogRow {
-  id: string;
-  occurredAt: number;
-  level: string | null;
-  context: string | null;
-  text: string;
-  traceId: string | null;
-  spanId: string | null;
-  attributes: Record<string, unknown>;
-}
-
-export interface ErrorGroupRow {
-  id: string;
-  applicationId: string;
-  fingerprint: string;
-  class: string | null;
-  message: string;
-  topFrameFile: string | null;
-  topFrameLine: number | null;
-  status: "open" | "resolved" | "ignored";
-  firstSeen: number;
-  lastSeen: number;
-  occurrences: number;
-}
-
-export interface ExecutionDetail {
-  execution: ExecutionListItem & {
-    applicationId: string;
-    tags: Record<string, unknown>;
-    request: Record<string, unknown> | null;
-    userId: string | null;
-    waitMs: number | null;
-    attemptsMade: number | null;
-    maxAttempts: number | null;
-  };
-  spans: SpanRow[];
-  logs: LogRow[];
-  error: ErrorGroupRow | null;
-}
-
-export interface Health {
-  ok: boolean;
-  version: string;
-  ingestApi: string;
-  sdk: string;
-  database: "up" | "down";
-  stats: {
-    batches: number;
-    bytes: number;
-    rejected: number;
-    refused: number;
-    executions: number;
-    spans: number;
-    lastBatchAt: number | null;
-  };
-}
-
-export interface Window {
-  from: number;
-  to: number;
+function describe(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const value = error as { message?: unknown; value?: unknown };
+    if (typeof value.message === "string") return value.message;
+    return JSON.stringify(error).slice(0, 500);
+  }
+  return String(error);
 }
 
 export class ApiError extends Error {
@@ -141,92 +44,81 @@ export class ApiError extends Error {
   }
 }
 
-const BASE = "";
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
-    credentials: "same-origin",
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => response.statusText);
-    throw new ApiError(response.status, text.slice(0, 500));
-  }
-  return (await response.json()) as T;
+export interface Window {
+  from: number;
+  to: number;
 }
 
 /**
- * Query string from a plain object. `Object.entries` is used rather than an
- * index signature so callers can pass interfaces (`Window`), which TypeScript
- * refuses to assign to `Record<string, …>`.
+ * The surface the pages use.
+ *
+ * Everything below is a thin adapter over Eden: it exists so a page says
+ * `api.executions(appId, range)` instead of threading `{ query: { from, to } }`
+ * through every call site, and so the components do not deal with `{ data }`.
  */
-function qs(params: object): string {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params) as Array<[string, unknown]>) {
-    if (value !== undefined && value !== null && value !== "") {
-      search.set(key, String(value));
-    }
-  }
-  const query = search.toString();
-  return query ? `?${query}` : "";
-}
-
 export const api = {
-  health: () => request<Health>("/health"),
+  health: () => unwrap(client.health.get()),
 
   applications: (w: Window) =>
-    request<ApplicationSummary[]>(`/api/v1/applications${qs(w)}`),
+    unwrap(client.api.v1.applications.get({ query: w })),
 
   operations: (appId: string, w: Window) =>
-    request<RankedOperation[]>(`/api/v1/applications/${appId}/operations${qs(w)}`),
+    unwrap(client.api.v1.applications({ id: appId }).operations.get({ query: w })),
 
   executions: (
     appId: string,
-    w: Window & { limit?: number; operationRowId?: string; kind?: string },
-  ) =>
-    request<{ items: ExecutionListItem[]; nextCursor: string | null }>(
-      `/api/v1/applications/${appId}/executions${qs(w)}`,
-    ),
+    w: Window & { limit?: number; operationRowId?: string; kind?: "request" | "job" },
+  ) => unwrap(client.api.v1.applications({ id: appId }).executions.get({ query: w })),
 
-  execution: (id: string) => request<ExecutionDetail>(`/api/v1/executions/${id}`),
+  execution: (id: string) => unwrap(client.api.v1.executions({ id }).get()),
 
-  errors: (appId: string, status?: string) =>
-    request<{ items: ErrorGroupRow[] }>(
-      `/api/v1/applications/${appId}/errors${qs({ status })}`,
-    ),
+  trace: (traceId: string) => unwrap(client.api.v1.traces({ traceId }).get()),
 
-  setErrorStatus: (id: string, status: ErrorGroupRow["status"]) =>
-    request<{ ok: boolean }>(`/api/v1/errors/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status }),
-    }),
+  errors: (appId: string, status?: "open" | "resolved" | "ignored") =>
+    unwrap(client.api.v1.applications({ id: appId }).errors.get({ query: { status } })),
+
+  setErrorStatus: (id: string, status: "open" | "resolved" | "ignored") =>
+    unwrap(client.api.v1.errors({ id }).patch({ status })),
 
   logs: (
     appId: string,
-    w: Window & { level?: string; traceId?: string; limit?: number },
-  ) => request<{ items: LogRow[] }>(`/api/v1/applications/${appId}/logs${qs(w)}`),
+    w: Window & {
+      level?: "fatal" | "error" | "warn" | "log" | "debug" | "verbose";
+      traceId?: string;
+      limit?: number;
+    },
+  ) => unwrap(client.api.v1.applications({ id: appId }).logs.get({ query: w })),
 
-  pendingLinks: () =>
-    request<{
-      items: Array<{
-        userCode: string;
-        applicationName: string;
-        hostname: string | null;
-        expiresAt: number;
-        createdAt: number;
-      }>;
-    }>("/api/v1/link/pending"),
+  pendingLinks: () => unwrap(client.api.v1.link.pending.get()),
 
   approveLink: (userCode: string, serviceId?: string) =>
-    request<{ applicationId: string; userCode: string }>("/api/v1/link/approve", {
-      method: "POST",
-      body: JSON.stringify({ userCode, serviceId }),
-    }),
+    unwrap(client.api.v1.link.approve.post({ userCode, serviceId })),
 
-  denyLink: (userCode: string) =>
-    request<{ ok: boolean }>("/api/v1/link/deny", {
-      method: "POST",
-      body: JSON.stringify({ userCode }),
-    }),
+  denyLink: (userCode: string) => unwrap(client.api.v1.link.deny.post({ userCode })),
 };
+
+/**
+ * Response types, derived from Eden rather than declared.
+ *
+ * `Awaited<ReturnType<…>>` is how a page names a row type without importing a
+ * DTO: the server's schema is the only definition.
+ */
+type ApplicationsResult = Awaited<ReturnType<typeof api.applications>>;
+export type ApplicationSummary = ApplicationsResult[number];
+
+type OperationsResult = Awaited<ReturnType<typeof api.operations>>;
+export type RankedOperation = OperationsResult[number];
+
+type ExecutionsResult = Awaited<ReturnType<typeof api.executions>>;
+export type ExecutionListItem = ExecutionsResult["items"][number];
+
+type ExecutionResult = Awaited<ReturnType<typeof api.execution>>;
+export type ExecutionDetail = ExecutionResult;
+export type SpanRow = ExecutionResult["spans"][number];
+export type LogRow = ExecutionResult["logs"][number];
+
+type ErrorsResult = Awaited<ReturnType<typeof api.errors>>;
+export type ErrorGroupRow = ErrorsResult["items"][number];
+
+type HealthResult = Awaited<ReturnType<typeof api.health>>;
+export type Health = HealthResult;

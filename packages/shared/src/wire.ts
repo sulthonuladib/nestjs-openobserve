@@ -416,11 +416,26 @@ function countCharacters(value: string): number {
 // Decoded shapes, for the normalizer. These are what a validated batch means.
 // ---------------------------------------------------------------------------
 
+/**
+ * Source around an in-app stack frame, captured by the agent.
+ *
+ * The wire name is `codeFrames` on the error object, not `sourceContext` (that
+ * is the SDK *option* name). `firstLine` is the 1-based line `lines[0]`
+ * corresponds to, and `line` is the 1-based line to highlight.
+ */
+export interface CodeFrame {
+  file: string;
+  line: number;
+  firstLine: number;
+  lines: string[];
+}
+
 export interface EncodedSpanError {
   cls?: string;
   message?: string;
   stack?: string;
   tags?: Record<string, string | number | boolean>;
+  codeFrames?: CodeFrame[];
 }
 
 export interface EncodedSpan {
