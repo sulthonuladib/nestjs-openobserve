@@ -1,10 +1,13 @@
 {
   "compilerOptions": {
     // Environment setup & latest features
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
+    // One app, one package: the browser bundle (`public/`) and the collector
+    // (`src/server`) are typechecked by this single config, so Bun's Fullstack
+    // Dev Server needs no second TS project and no workspace exports map.
     "jsx": "react-jsx",
     "allowJs": true,
     "types": ["bun"],
@@ -29,13 +32,14 @@
   },
   // `repos/` is a vendored git subtree: read-only reference material for agents
   // and humans, never compiled, never type-checked, never bundled.
-  // Web is typechecked by its own tsconfig (it needs the DOM lib and jsx), which
-  // `bun run --filter '*' typecheck` runs alongside this one.
   "include": [
-    "apps/server/**/*.ts",
-    "packages/**/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "public/**/*.ts",
+    "public/**/*.tsx",
     "test/**/*.ts",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "drizzle.config.ts"
   ],
-  "exclude": ["node_modules", "dist", "repos", "**/drizzle/**", "apps/web"]
+  "exclude": ["node_modules", "dist", "repos", "**/drizzle/**"]
 }

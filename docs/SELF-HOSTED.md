@@ -13,25 +13,25 @@ Umami, Grafana — the products people actually self-host.
 
 ## 1. Identity: one instance, one admin, invites
 
-| Hosted (removed) | Self-hosted (ours) |
-|---|---|
-| Public sign-up + email verification | **No public registration.** Closed after setup; access only by invite |
-| Teams as billing/ownership entities | **No teams.** Projects own telemetry; admins own the instance. A team in the SaaS is what a *tenant* is in a hosted product — self-hosted has exactly one |
-| Account plans gate features | Everything is on. No feature flags, no entitlements |
-| Seats, per-user pricing | Unlimited members |
-| SSO as an upsell | OIDC/SAML is an *optional instance setting*, off by default |
-| Password reset by email | Reset by email **if SMTP is configured**; otherwise a CLI command. Nobody should be locked out of their own server because they have no mail relay |
-| 2FA per account | Optional, off by default; not required for anything |
+| Hosted (removed)                    | Self-hosted (ours)                                                                                                                                        |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public sign-up + email verification | **No public registration.** Closed after setup; access only by invite                                                                                     |
+| Teams as billing/ownership entities | **No teams.** Projects own telemetry; admins own the instance. A team in the SaaS is what a _tenant_ is in a hosted product — self-hosted has exactly one |
+| Account plans gate features         | Everything is on. No feature flags, no entitlements                                                                                                       |
+| Seats, per-user pricing             | Unlimited members                                                                                                                                         |
+| SSO as an upsell                    | OIDC/SAML is an _optional instance setting_, off by default                                                                                               |
+| Password reset by email             | Reset by email **if SMTP is configured**; otherwise a CLI command. Nobody should be locked out of their own server because they have no mail relay        |
+| 2FA per account                     | Optional, off by default; not required for anything                                                                                                       |
 
 ### Roles
 
 Two layers, matching the upstream project-access matrix exactly (Read / Write /
 Admin) plus one instance-level role:
 
-| Layer | Roles | Assigned by |
-|---|---|---|
-| **Instance** | `admin` (everything, incl. settings, users, invites, retention) | first-run setup; later by another instance admin |
-| **Project** | `read` (view), `write` (+ create apps/keys/rules/SLOs, resolve errors), `admin` (+ rename/delete project, manage members) | project admins |
+| Layer        | Roles                                                                                                                     | Assigned by                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **Instance** | `admin` (everything, incl. settings, users, invites, retention)                                                           | first-run setup; later by another instance admin |
+| **Project**  | `read` (view), `write` (+ create apps/keys/rules/SLOs, resolve errors), `admin` (+ rename/delete project, manage members) | project admins                                   |
 
 "Creator only" is a rule, not a role: whoever filed an issue may edit or delete
 it regardless of their project role.
@@ -57,7 +57,7 @@ module does, and it makes the container boot deterministic.
 **C. Invite.** An instance admin issues an invite for an email + instance role.
 The invite is a URL (`/invite/<token>`) valid for 7 days, single use. The
 intended role is bound server-side; the link carries no privilege in the URL
-itself. No SMTP required: the admin copies the link. If SMTP *is* configured the
+itself. No SMTP required: the admin copies the link. If SMTP _is_ configured the
 same invite is emailed, with the link as the fallback.
 
 **D. Reopen registration.** Possible deliberately from Settings
@@ -109,17 +109,17 @@ The reverse is not required.
 
 ## 4. Settings that only exist in a self-hosted product
 
-| Setting | Default | Why it matters |
-|---|---|---|
-| `registration` | `invite` | `closed` \| `invite` \| `open` — the one switch every self-hoster looks for first |
-| `publicUrl` | `http://localhost:4320` | invite links, CLI-link verification URI, webhook self-references |
-| `trustProxy` | `false` | whether `X-Forwarded-*` is believed; getting this wrong breaks cookies or spoofs IPs |
-| `secureCookies` | `auto` | `auto` = on when `publicUrl` is https |
-| `anonymousIngest` | `true` | mirrors `OBSERVE_ALLOW_ANONYMOUS_INGEST`; the UI warns when it is on **and** the ingest port is public |
-| `retention.{traces,logs,metrics,errors,runtime}` | keep forever | operator owns the disk, so the operator decides |
-| `smtp` | unset | optional; enables email invites, new-error digest, alert email channel |
-| `oidc` | unset | optional; issuer, client id/secret, allowed domains, auto-provision role |
-| `telemetryOptOut` | `false` | we send **nothing**; documented so nobody has to wonder |
+| Setting                                          | Default                 | Why it matters                                                                                         |
+| ------------------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| `registration`                                   | `invite`                | `closed` \| `invite` \| `open` — the one switch every self-hoster looks for first                      |
+| `publicUrl`                                      | `http://localhost:4320` | invite links, CLI-link verification URI, webhook self-references                                       |
+| `trustProxy`                                     | `false`                 | whether `X-Forwarded-*` is believed; getting this wrong breaks cookies or spoofs IPs                   |
+| `secureCookies`                                  | `auto`                  | `auto` = on when `publicUrl` is https                                                                  |
+| `anonymousIngest`                                | `true`                  | mirrors `OBSERVE_ALLOW_ANONYMOUS_INGEST`; the UI warns when it is on **and** the ingest port is public |
+| `retention.{traces,logs,metrics,errors,runtime}` | keep forever            | operator owns the disk, so the operator decides                                                        |
+| `smtp`                                           | unset                   | optional; enables email invites, new-error digest, alert email channel                                 |
+| `oidc`                                           | unset                   | optional; issuer, client id/secret, allowed domains, auto-provision role                               |
+| `telemetryOptOut`                                | `false`                 | we send **nothing**; documented so nobody has to wonder                                                |
 
 Settings live in one `instance_setting` table (key → jsonb) so a new option is a
 row, not a migration. Environment variables win over the table for the four
@@ -130,17 +130,17 @@ compose file sets, and it must not be silently overridden by a stale row.
 
 ## 5. Operations a self-hoster will actually perform
 
-| Task | How |
-|---|---|
-| **Backup** | `pg_dump` of the one database. `admin export` covers settings/users for a machine-readable copy. Documented as a cron line, not a feature |
-| **Restore** | restore the dump, boot, migrations are idempotent |
-| **Upgrade** | pull the image/tarball, restart. Migrations run at boot unless `OBSERVE_RUN_MIGRATIONS=0`; supported from the previous two minor versions (`release-pipeline.md` §1) |
-| **Downgrade** | refused, not attempted: the server checks the schema version and will not start on a schema newer than it understands |
-| **Reset a password** | `admin reset-password` (or email, if SMTP is set) |
-| **Add a colleague** | invite link; no mail relay needed |
-| **Rotate an API key** | project → API keys → revoke; the agent's backoff means the app recovers within an hour, or immediately on restart |
-| **Cap disk** | retention days per data class; `admin prune --dry-run` shows what would go |
-| **Audit a change** | append-only `audit_log`: actor, action, target, before/after, IP |
+| Task                  | How                                                                                                                                                                  |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Backup**            | `pg_dump` of the one database. `admin export` covers settings/users for a machine-readable copy. Documented as a cron line, not a feature                            |
+| **Restore**           | restore the dump, boot, migrations are idempotent                                                                                                                    |
+| **Upgrade**           | pull the image/tarball, restart. Migrations run at boot unless `OBSERVE_RUN_MIGRATIONS=0`; supported from the previous two minor versions (`release-pipeline.md` §1) |
+| **Downgrade**         | refused, not attempted: the server checks the schema version and will not start on a schema newer than it understands                                                |
+| **Reset a password**  | `admin reset-password` (or email, if SMTP is set)                                                                                                                    |
+| **Add a colleague**   | invite link; no mail relay needed                                                                                                                                    |
+| **Rotate an API key** | project → API keys → revoke; the agent's backoff means the app recovers within an hour, or immediately on restart                                                    |
+| **Cap disk**          | retention days per data class; `admin prune --dry-run` shows what would go                                                                                           |
+| **Audit a change**    | append-only `audit_log`: actor, action, target, before/after, IP                                                                                                     |
 
 ---
 
@@ -149,7 +149,7 @@ compose file sets, and it must not be silently overridden by a stale row.
 - **No teams.** A tenant layer for a product with one tenant.
 - **No public sign-up page.** The SaaS needs acquisition; a server needs access
   control.
-- **No email as a requirement.** Nothing in the product may *require* SMTP; it
+- **No email as a requirement.** Nothing in the product may _require_ SMTP; it
   only upgrades the experience.
 - **No "account" concept.** There is an instance; you are a user in it.
 - **No plans, seats, trials, invoices, usage meters, upgrade prompts** — already
@@ -160,11 +160,11 @@ compose file sets, and it must not be silently overridden by a stale row.
 
 ## 7. Implementation order
 
-| Step | Content |
-|---|---|
+| Step  | Content                                                                                                                                                             |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **1** | `instance_setting`, `invite`, `audit_log` tables; `app_credential` → project-scoped; job failures stop creating error groups; access levels become read/write/admin |
-| **2** | `auth` module: `status`, `setup` (self-locking), `login`, `logout`, `me`, invites (issue/accept), session cookie with sha256-hashed token |
-| **3** | `requireUser` / `requireRole` macros; guard every `/api/v1/*` route except `auth/status`, `auth/setup`, `auth/login`, `auth/invite/:token*` and `health` |
-| **4** | CLI: `admin` subcommands (§3) |
-| **5** | Web: `/setup`, `/login`, `/invite/:token`, getting-started panel, settings → access |
-| **6** | Optional SMTP + OIDC; audit log surface |
+| **2** | `auth` module: `status`, `setup` (self-locking), `login`, `logout`, `me`, invites (issue/accept), session cookie with sha256-hashed token                           |
+| **3** | `requireUser` / `requireRole` macros; guard every `/api/v1/*` route except `auth/status`, `auth/setup`, `auth/login`, `auth/invite/:token*` and `health`            |
+| **4** | CLI: `admin` subcommands (§3)                                                                                                                                       |
+| **5** | Web: `/setup`, `/login`, `/invite/:token`, getting-started panel, settings → access                                                                                 |
+| **6** | Optional SMTP + OIDC; audit log surface                                                                                                                             |

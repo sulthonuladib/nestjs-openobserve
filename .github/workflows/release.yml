@@ -69,14 +69,11 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: Build SPA
-        run: bun run build:web
-
-      - name: Compile the server into one executable
+      - name: Compile the app into one executable
         env:
           TARGET: ${{ matrix.target }}
         run: |
-          bun build apps/server/src/index.ts \
+          bun build src/server/index.ts \
             --compile \
             --minify \
             --target "$TARGET" \
@@ -92,8 +89,8 @@ jobs:
           name="nestjs-openobserve-${TAG}-${PLATFORM}"
           mkdir -p "dist/${name}"
           cp dist/nestjs-openobserve "dist/${name}/nestjs-openobserve"
-          cp -r apps/web/dist "dist/${name}/web"
-          cp -r apps/server/drizzle "dist/${name}/drizzle"
+          cp -r public "dist/${name}/public"
+          cp -r drizzle "dist/${name}/drizzle"
           cp README.md LICENSE NOTICE .env.example docker-compose.yml "dist/${name}/"
           # A release artifact must never contain the vendored SDK.
           if find "dist/${name}" -path '*repos*' | grep -q .; then
@@ -211,7 +208,7 @@ jobs:
 
             ```bash
             docker pull ${{ env.IMAGE }}:${{ needs.version.outputs.tag }}
-            docker run -p 4319:4319 -p 4320:4320 \
+            docker run -p 4320:4320 \
               -e OBSERVE_DATABASE_URL=postgres://user:pass@db:5432/observe \
               ${{ env.IMAGE }}:${{ needs.version.outputs.tag }}
             ```
@@ -228,7 +225,7 @@ jobs:
             ```
 
             Set `OBSERVE_WEB_DIR` and `OBSERVE_MIGRATIONS_DIR` to the extracted
-            `web/` and `drizzle/` directories if you run the binary from elsewhere.
+            `public/` and `drizzle/` directories if you run the binary from elsewhere.
 
             ## Compatibility
 

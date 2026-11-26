@@ -1,7 +1,13 @@
 # `repos/` is a vendored git subtree (the @nestjs/observe SDK) kept as read-only
 # reference. Its own *.spec.ts suites are not ours to run and need Redis/MySQL/
 # Mongo; `test/conformance/` is the one place that imports from it, on purpose.
-# Bun's test runner has no exclude glob, so the root `test` script names the
-# directories to search instead of walking the whole tree.
+# Bun's test runner has no exclude glob, so the `test` script names the
+# directory to search instead of walking the whole tree.
 [install]
 exact = false
+
+# Bun's Fullstack Dev Server compiles `public/index.tsx` and `public/styles.css`
+# on demand — no Vite, no bundler config. This is the only build-time plugin the
+# product needs, and `bun build --compile` keeps working with it.
+[serve.static]
+plugins = ["bun-plugin-tailwind"]

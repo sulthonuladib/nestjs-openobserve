@@ -39,7 +39,7 @@ echo "== ingest with the minted pair (expect degraded:false)"
 KEY=$(printf '%s' "$CREDS" | sed -n 's/.*"appKey":"\([^"]*\)".*/\1/p')
 SECRET=$(printf '%s' "$CREDS" | sed -n 's/.*"appSecret":"\([^"]*\)".*/\1/p')
 bun -e "
-const { sampleBatch } = await import('./packages/shared/src/fixtures.ts');
+const { sampleBatch } = await import('../src/fixtures.ts');
 const body = Bun.gzipSync(new TextEncoder().encode(JSON.stringify(sampleBatch())));
 const res = await fetch('$BASE/applications/telemetry', {
   method: 'POST',

@@ -2,7 +2,7 @@
  * The one test that matters most: our restated wire contract must be identical
  * to the SDK's own.
  *
- * `packages/shared/src/wire.ts` is a hand-written port — `repos/` is reference
+ * `src/wire.ts` is a hand-written port — `repos/` is reference
  * material and must never become a runtime dependency. The risk of a port is
  * drift: the SDK bumps its contract, our copy does not, and production starts
  * answering 400 to batches the agent considers valid. This test removes that
@@ -20,13 +20,13 @@ import {
   TELEMETRY_BATCH,
   validateBatch,
   type Shape,
-} from "@observe/shared";
+} from "../../src/wire";
 import {
   MAX_BATCH_ITEMS as SDK_MAX_BATCH_ITEMS,
   TELEMETRY_BATCH as SDK_BATCH,
   validateTelemetryPayload,
 } from "../../repos/observe/src/agent/telemetry-wire-contract";
-import { sampleBatch } from "../../packages/shared/src/fixtures";
+import { sampleBatch } from "../../src/fixtures";
 
 /**
  * Compares only what a collector has to agree with: key names, types, required,

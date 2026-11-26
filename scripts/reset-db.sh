@@ -35,4 +35,4 @@ echo
 echo "restart the collector so migrations run again:"
 echo "  bun dev"
 echo
-echo "then open http://localhost:4320 (or http://localhost:5173) and you get /setup."
+echo "then open http://localhost:4320 and you get /setup."

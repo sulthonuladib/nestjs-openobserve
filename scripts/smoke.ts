@@ -5,7 +5,7 @@
  *   bun run scripts/smoke.ts            # against an already-running server
  *   bun run scripts/smoke.ts --spawn    # start one itself on a temp data dir
  */
-import { sampleBatch } from "../packages/shared/src/fixtures";
+import { sampleBatch } from "../src/fixtures";
 
 interface Json {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,12 +49,11 @@ if (spawn) {
   await sql.close();
 
   server = Bun.spawn({
-    cmd: ["bun", "apps/server/src/index.ts"],
+    cmd: ["bun", "src/server/index.ts"],
     env: {
       ...process.env,
       OBSERVE_DATABASE_URL: databaseUrl,
-      OBSERVE_SINGLE_PORT: "1",
-      OBSERVE_API_PORT: String(port),
+      OBSERVE_PORT: String(port),
       OBSERVE_LOG_LEVEL: "info",
     },
     stdout: "inherit",

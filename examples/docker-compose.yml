@@ -1,0 +1,38 @@
+# The example apps' backing services. The collector itself is the root
+# `docker-compose.yml`; this one is only Postgres + Redis for the apps.
+#
+# Ports are deliberately off the defaults so they do not collide with an
+# existing Postgres (5432/5433) or Redis (6379).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: orders
+      POSTGRES_DB: orders
+    ports:
+      - "5434:5432"
+    volumes:
+      - orders-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d orders"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - orders-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  orders-postgres:
+  orders-redis:

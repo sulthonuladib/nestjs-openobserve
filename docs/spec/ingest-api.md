@@ -51,6 +51,24 @@ that is what a `400` is judged against (`src/agent/telemetry-wire-contract.ts:1-
   does not normalise it, the CLI does. Tolerate it.
 - Profiles are unreachable in 0.3.17 (§3.9); implement the route as a stub only.
 
+### The `link` reply carries identity, not just keys
+
+The CLI's success line is `Linked to ${applicationName} in ${projectName}`
+(`src/cli/link.ts:147`), and after writing the key pair it wires
+`serviceId: serviceIdFor(credentials.applicationName, applicationName)` into the
+root module (`:198`; `serviceIdFor` at `src/cli/project-setup.ts:307-320`).
+So a `200 { appKey, appSecret }` is *not* enough: it prints
+`Linked to undefined in undefined` and wires `serviceId: undefined`. Return
+`projectName`, `applicationName` (plus `projectId`/`applicationId` for the
+dashboard) on the poll that issues the pair, and store `serviceId` as the same
+slug the CLI will derive — `@acme/Orders` → `orders`. Getting that wrong does
+not fail the link; the first batch just creates a second application row,
+because ingest resolves applications by `serviceId`.
+
+The CLI also hands `verificationUri` straight to the person and to the browser
+(`:115-132`). It must be the SPA's real route — `<publicUrl>/link` — not a
+hash URL, or the shell boots at `/` and the approval page is unreachable.
+
 ## 2. Authentication
 
 ### 2.1 Headers on the telemetry POST
@@ -798,6 +816,9 @@ there boots real Nest apps), never against a hand-written fake.
 12. `POST /applications/profiles` with §3.9 → `200` (stub); `403
     {"code":"ENTITLEMENT_REQUIRED"}` → window discarded, no retry.
 13. `POST /cli-link/sessions` → `201 { deviceCode, userCode, verificationUri,
-    expiresIn, interval }`; `POST /cli-link/token` → `400
-    {"error":"authorization_pending"}` then `200 { appKey, appSecret,
-    projectName, applicationName }`.
+    expiresIn, interval }` with `verificationUri` = `<publicUrl>/link` (a path,
+    not `#/link`); `POST /cli-link/token` → `400
+    {"error":"authorization_pending"}` then `200 { appKey, appSecret, projectId,
+    projectName, applicationId, applicationName }`. The CLI prints the two names
+    and slugs `applicationName` into the `serviceId` it wires; the collector
+    stores that same slug (§1 "The `link` reply").

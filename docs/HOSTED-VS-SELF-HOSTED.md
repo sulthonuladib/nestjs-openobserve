@@ -10,7 +10,7 @@ want, **whether it needs a key**.
 
 ```diff
 - # hosted (the default)
-+ OBSERVE_ENDPOINT=http://localhost:4319
++ OBSERVE_ENDPOINT=http://localhost:4320
 ```
 
 That is the whole migration. The SDK defaults to
@@ -26,7 +26,7 @@ and reads `OBSERVE_ENDPOINT` before falling back to it. Your instrumentation cod
 | | **Hosted** (`observe.nestjs.com`) | **This build** (`nestjs-openobserve`) |
 |---|---|---|
 | Agent / SDK | `@nestjs/observe` | **the same package, unmodified** |
-| Where to send | `POST https://observe-api.nestjs.com/applications/telemetry` | `POST http://<your-host>:4319/applications/telemetry` |
+| Where to send | `POST https://observe-api.nestjs.com/applications/telemetry` | `POST http://<your-host>:4320/applications/telemetry` |
 | How to point at it | default | `OBSERVE_ENDPOINT=…` |
 | Credentials | app key + secret per **project**, issued by the dashboard or `link` | same pair, issued by your own dashboard or `link` |
 | Without credentials | the hosted collector **rejects** every batch (401) | accepted by default (`OBSERVE_ALLOW_ANONYMOUS_INGEST=1`) — a local collector should not need a key before you have a UI |
@@ -70,7 +70,7 @@ subsystem from the backend and from your mental model.
    page is then gone for good.
 3. **Point one app at it.**
    ```bash
-   OBSERVE_ENDPOINT=http://localhost:4319 bun run start
+   OBSERVE_ENDPOINT=http://localhost:4320 bun run start
    ```
    Leave `OBSERVE_APP_KEY`/`OBSERVE_APP_SECRET` unset for the first run: the agent
    omits the headers entirely when unconfigured, and the collector accepts it.
@@ -78,9 +78,9 @@ subsystem from the backend and from your mental model.
    increments within one flush (5 s). The application appears in **Overview**.
 5. **Issue a real key pair** when you are happy:
    ```bash
-   OBSERVE_ENDPOINT=http://localhost:4319 npx @nestjs/observe link
+   OBSERVE_ENDPOINT=http://localhost:4320 npx @nestjs/observe link
    ```
-   Approve the code at `http://localhost:4320/#/link`; the CLI writes
+   Approve the code at `http://localhost:4320/link`; the CLI writes
    `OBSERVE_APP_KEY`/`OBSERVE_APP_SECRET` into the app's `.env`. Then turn off
    anonymous ingest:
    ```bash

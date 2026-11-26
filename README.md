@@ -7,7 +7,7 @@ minus pricing.
 Point the agent at it and it reports:
 
 ```bash
-OBSERVE_ENDPOINT=http://localhost:4319     # instead of observe-api.nestjs.com
+OBSERVE_ENDPOINT=http://localhost:4320     # instead of observe-api.nestjs.com
 ```
 
 No npm package. No plans, no seats, no event metering, no overage pauses — the
@@ -23,7 +23,7 @@ tier allows it.
 docker compose up -d          # Postgres on :5433
 cp .env.example .env
 bun install
-bun dev                       # ingest :4319, dashboard :4320
+bun dev                       # everything on :4320
 ```
 
 Open **http://localhost:4320**. With no admin yet you get the setup screen:
@@ -34,23 +34,23 @@ Then, in a NestJS app:
 
 ```bash
 bun add @nestjs/observe
-OBSERVE_ENDPOINT=http://localhost:4319 bun run start
+OBSERVE_ENDPOINT=http://localhost:4320 bun run start
 ```
 
 No key pair is required by a local collector. A real one comes from the
 device-code flow:
 
 ```bash
-OBSERVE_ENDPOINT=http://localhost:4319 npx @nestjs/observe link
+OBSERVE_ENDPOINT=http://localhost:4320 npx @nestjs/observe link
 ```
 
-It prints a code, you approve it at `http://localhost:4320/#/link`, and it
+It prints a code, you approve it at `http://localhost:4320/link`, and it
 writes `OBSERVE_APP_KEY` / `OBSERVE_APP_SECRET` into the app's `.env`.
 
 Single-port deployment (one reverse proxy in front):
 
 ```bash
-OBSERVE_SINGLE_PORT=1 bun dev   # everything on :4320
+bun dev                        # everything on :4320
 ```
 
 Seven copy-pasteable steps, clone to a reporting app:
@@ -60,10 +60,11 @@ Seven copy-pasteable steps, clone to a reporting app:
 
 | Component | Path | What it does |
 |---|---|---|
-| Collector | `apps/server/src/modules/ingest/` | Accepts the SDK's gzip telemetry batches, validates them against the wire contract, writes one transaction per batch |
-| Query API | `apps/server/src/modules/*/` | Dashboard API, typed end-to-end from the Postgres schema via `drizzle-typebox` |
-| Storage | `apps/server/src/db/` | Postgres + Drizzle, append-only tables, per-minute rollups |
-| Shared contract | `packages/shared/src/wire.ts` | The wire contract, ported from the vendored SDK and kept equal to it by a test |
+| Collector | `src/server/modules/ingest/` | Accepts the SDK's gzip telemetry batches, validates them against the wire contract, writes one transaction per batch |
+| Query API | `src/server/modules/*/` | Dashboard API, typed end-to-end from the Postgres schema via `drizzle-typebox` |
+| Storage | `src/server/db/` | Postgres + Drizzle, append-only tables, per-minute rollups |
+| Dashboard | `public/` | React SPA (`index.tsx` is Bun's frontend entrypoint, `App.tsx` the shell), served by the same Bun app |
+| Wire contract | `src/wire.ts` | The wire contract, ported from the vendored SDK and kept equal to it by a test |
 | Vendored SDK | `repos/observe/` | `@nestjs/observe` as a **git subtree** — read-only reference for agents and humans, never built, never shipped |
 
 ## Documentation
@@ -82,11 +83,17 @@ Seven copy-pasteable steps, clone to a reporting app:
 
 ```bash
 bun install
-bun run typecheck      # every workspace package, then the root
-bun test               # unit + conformance
+bun run typecheck      # tsc --noEmit, one config for server and dashboard
+bun run test           # unit + conformance (37 tests, needs a Postgres)
 bun test test/conformance   # just the SDK wire-contract equality checks
 bun run scripts/smoke.ts --spawn   # ingest a realistic batch, read it back
+bun run compile        # one compiled binary in dist/ (ship public/ + drizzle/ beside it)
 ```
+
+`bun dev` is `bun --hot src/server/index.ts`: Bun's Fullstack Dev Server
+compiles `public/index.tsx` and `public/styles.css` (React JSX, Tailwind v4 via
+`bun-plugin-tailwind`) with HMR on `:4320`. There is no Vite, no `:5173`, and no
+web build step — the dashboard and the collector are one deployable.
 
 `bun run dev` needs a Postgres: `docker compose up -d` starts one on `:5433`
 (`:5432` is the conventional port, but a dev machine usually has one already).
@@ -94,7 +101,7 @@ bun run scripts/smoke.ts --spawn   # ingest a realistic batch, read it back
 ### Migrations
 
 ```bash
-bun run db:generate    # apps/server/drizzle/*.sql from src/db/schema.ts
+bun run db:generate    # drizzle/*.sql from src/server/db/schema.ts
 bun run db:migrate     # apply
 ```
 
@@ -120,9 +127,9 @@ See [`.env.example`](.env.example). Only `OBSERVE_DATABASE_URL` is required.
 |---|---|---|
 | `OBSERVE_DATABASE_URL` | `postgres://observe:observe@localhost:5432/observe` | Postgres 15+ |
 | `OBSERVE_DATABASE_POOL` | `20` | connection pool size |
-| `OBSERVE_INGEST_PORT` | `4319` | collector listener (internet-facing) |
-| `OBSERVE_API_PORT` | `4320` | dashboard + query API |
-| `OBSERVE_SINGLE_PORT` | `0` | serve both on `OBSERVE_API_PORT` |
+| `OBSERVE_PORT` | `4320` | the only listener: ingest, query API and dashboard |
+| `OBSERVE_WEB_DIR` | `./public` | the dashboard assets (set it when the binary runs elsewhere) |
+| `OBSERVE_MIGRATIONS_DIR` | `./drizzle` | the generated SQL |
 | `OBSERVE_RUN_MIGRATIONS` | `1` | migrate at boot |
 | `OBSERVE_ALLOW_ANONYMOUS_INGEST` | `1` | accept batches with no key pair (local dev) |
 | `OBSERVE_PUBLIC_URL` | `http://localhost:4320` | origin used by `/cli-link` |

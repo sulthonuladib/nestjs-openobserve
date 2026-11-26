@@ -56,14 +56,14 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Typecheck (every workspace package, then the root)
+      - name: Typecheck
         run: bun run typecheck
 
       - name: Unit + conformance tests
-        run: bun test
+        run: bun run test
 
       - name: Apply migrations
-        run: bun run --cwd apps/server db:migrate
+        run: bun run db:migrate
 
       - name: End-to-end ingest round trip
         run: bun run scripts/smoke.ts

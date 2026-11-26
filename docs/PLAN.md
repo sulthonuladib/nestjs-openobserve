@@ -28,12 +28,12 @@ Verified from source; full detail in [`spec/ingest-api.md`](spec/ingest-api.md).
 
 ### Endpoints
 
-| Method | Path | Body | Notes |
-|---|---|---|---|
-| `POST` | `/applications/telemetry` | gzip JSON `TELEMETRY_BATCH` | the only hot path |
-| `POST` | `/applications/profiles` | gzip | **shelved in SDK 0.3.17** — endpoints unregistered; we stub + version the table for its return |
-| `POST` | `/cli-link/sessions` | `{ applicationName, hostname }` | device-code start |
-| `POST` | `/cli-link/token` | `{ deviceCode }` | poll → credentials or `authorization_pending` / `slow_down` / `access_denied` / `expired_token` |
+| Method | Path                      | Body                            | Notes                                                                                           |
+| ------ | ------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `POST` | `/applications/telemetry` | gzip JSON `TELEMETRY_BATCH`     | the only hot path                                                                               |
+| `POST` | `/applications/profiles`  | gzip                            | **shelved in SDK 0.3.17** — endpoints unregistered; we stub + version the table for its return  |
+| `POST` | `/cli-link/sessions`      | `{ applicationName, hostname }` | device-code start                                                                               |
+| `POST` | `/cli-link/token`         | `{ deviceCode }`                | poll → credentials or `authorization_pending` / `slow_down` / `access_denied` / `expired_token` |
 
 ### Headers on every ingest request
 
@@ -53,16 +53,16 @@ works). Our collector must therefore support `OBSERVE_REQUIRE_AUTH=false`.
 
 ```jsonc
 {
-  "serviceId": "string ≤100",          // required
+  "serviceId": "string ≤100", // required
   "serviceVersion": "string ≤50",
   "truncatedSpans": 12,
   "forwardLogs": true,
-  "snapshots": [ /* requests & GraphQL/RPC/WS ops */ ],
-  "jobs":      [ /* queue + cron jobs */ ],
-  "runtime":   { /* one sampled window */ },
-  "custom":    [ /* counters, gauges, summaries */ ],
-  "logs":      [ /* Nest log lines */ ],
-  "objectives":[ /* @Objective() declarations → SLOs */ ]
+  "snapshots": [/* requests & GraphQL/RPC/WS ops */],
+  "jobs": [/* queue + cron jobs */],
+  "runtime": {/* one sampled window */},
+  "custom": [/* counters, gauges, summaries */],
+  "logs": [/* Nest log lines */],
+  "objectives": [/* @Objective() declarations → SLOs */],
 }
 ```
 
@@ -76,14 +76,14 @@ carrying it is a 400).
 
 The SDK reads exactly one thing on a `200`: the JSON body's `degraded` flag.
 
-| We answer | Agent behaviour |
-|---|---|
-| `200 {}` or `200 {"degraded":false}` | healthy; keeps backing off at zero |
-| `200 {"degraded":true, …}` | starts withholding span trees for 5 min (`DEGRADED_TTL_MS`) |
-| `401` / `403` | counts a rejection, exponential backoff to 1 probe/hour, drops batches |
-| `429` + optional `Retry-After` | pauses sends for that long (default 5 min) |
-| `400` | tries to strip offending fields and re-send **once**, then drops |
-| anything else | logs `statusText` and drops |
+| We answer                            | Agent behaviour                                                        |
+| ------------------------------------ | ---------------------------------------------------------------------- |
+| `200 {}` or `200 {"degraded":false}` | healthy; keeps backing off at zero                                     |
+| `200 {"degraded":true, …}`           | starts withholding span trees for 5 min (`DEGRADED_TTL_MS`)            |
+| `401` / `403`                        | counts a rejection, exponential backoff to 1 probe/hour, drops batches |
+| `429` + optional `Retry-After`       | pauses sends for that long (default 5 min)                             |
+| `400`                                | tries to strip offending fields and re-send **once**, then drops       |
+| anything else                        | logs `statusText` and drops                                            |
 
 **Because we are removing pricing, we never answer `degraded: true`.** All four
 degraded modes (`reduced`, `trimmed`, `paced`, `errors-only`) exist purely to
@@ -101,75 +101,80 @@ is caught at the edge and repaired by the SDK's own sanitizer.
 
 ### 3.1 Kept — the product
 
-| # | Feature | What the user gets | Primary surfaces |
-|---|---|---|---|
-| F1 | **Applications / services** | one row per `serviceId`, name, latest release, request rate, error rate, p95, health | onboarding, service detail, switch |
-| F2 | **Requests / operations** | every HTTP route, GraphQL op, RPC message, WS event, cron job, queue job as a named operation with throughput, p50/p95/p99, status mix | overview, operations list |
-| F3 | **Distributed traces** | waterfall with real overlap from `so`+`d`, span tree, per-span self time, class/method attribution, `observe.collapsed` ×N nodes, cross-service continuation via `x-request-id` | trace list, trace detail |
-| F4 | **Errors** | grouping by fingerprint (class + message + top in-app frame), occurrences over time, source context around each frame, affected releases, first/last seen, resolve / ignore / reopen, link to trace | errors list, error detail |
-| F5 | **Logs** | correlated log search; each line carries `traceId`/`spanId`/`level`/`context`; jump log→trace and trace→logs | log explorer, trace panel |
-| F6 | **Jobs & queues** | queue name, job name, status, `waitDuration` (backlog), `attemptsMade`/`maxAttempts`, duration, failures | jobs page |
-| F7 | **Scheduled jobs** | `@Cron` / `@Interval` / `@Timeout` runs as jobs | jobs page |
-| F8 | **Runtime metrics** | memory (rss/heap/total/external/arrayBuffers), CPU (user/system/percent), GC (count/duration by kind), event loop (latency/utilisation) as gauges per service instance | profiler / runtime page |
-| F9 | **Custom metrics** | counter / gauge (`additive`\|`ratio`\|`peak`) / summary (`q50/q95/q99/count/sum/min/max`), labelled series, series-limit UX | metrics page |
-| F10 | **SLOs / objectives** | `@Objective()` declarations ingested, matched to routes, availability + latency budgets, error budget remaining, 7/14/28/30-day windows, "declared in code" badge, hourly restatement | SLO page |
-| F11 | **Alerts** | rules on error rate / p95 / throughput / error count, thresholds + windows, channels (webhook, Slack-compatible, email), history, mute | alerts page |
-| F12 | **Drop filters** | server-side discard rules on `http.route`, `http.url`, operation, release — applied at ingest before storage | settings |
-| F13 | **Releases** | `serviceVersion` timeline, regression detection (error/латency vs previous release), affected-error attribution, deploy markers | releases page |
-| F14 | **Custom operation IDs** | honour `a.dop` / `TracerService.setOperationId`, cap of 100 live names per project per 30 days, fall back to route when over | operations |
-| F15 | **Source context** | render the captured `linesOfContext` around each stack frame, with the frame highlighted | error detail |
-| F16 | **Request capture** | headers/body captured for failed or slow requests, exactly as the SDK redacts them | trace detail |
-| F17 | **API keys** | app key/secret pairs per application, issue once (secret shown once), revoke, rotate — and the `/link` device-code flow that makes `npx @nestjs/observe link` work against us | settings, `/link` |
-| F18 | **Projects / environments / teams** | a project scopes applications and members; env is a tag dimension | settings |
-| F19 | **Retention** | configurable per data class (traces / logs / metrics), enforced by a rollup + prune job; **operator config, not a plan** | settings |
-| F21 | **Auth** | first-run admin bootstrap, sessions, optional OIDC, per-role permissions | login, settings |
-| F22 | **Self-observability** | ingest lag, batch size, drops, 400-repair rate, storage size, query latency | `/admin/health` |
+| #   | Feature                             | What the user gets                                                                                                                                                                                                                                                             | Primary surfaces                   |
+| --- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| F1  | **Applications / services**         | one row per `serviceId`, name, latest release, request rate, error rate, p95, health                                                                                                                                                                                           | onboarding, service detail, switch |
+| F2  | **Requests / operations**           | every HTTP route, GraphQL op, RPC message, WS event, cron job, queue job as a named operation with throughput, p50/p95/p99, status mix                                                                                                                                         | overview, operations list          |
+| F3  | **Distributed traces**              | waterfall with real overlap from `so`+`d`, span tree, per-span self time, class/method attribution, `observe.collapsed` ×N nodes, cross-service continuation via `x-request-id`                                                                                                | trace list, trace detail           |
+| F4  | **Errors**                          | grouping by fingerprint (class + message + top in-app frame), occurrences over time, source context around each frame, affected releases, first/last seen, resolve / ignore / reopen, link to trace                                                                            | errors list, error detail          |
+| F5  | **Logs**                            | correlated log search; each line carries `traceId`/`spanId`/`level`/`context`; jump log→trace and trace→logs                                                                                                                                                                   | log explorer, trace panel          |
+| F6  | **Jobs & queues**                   | queue name, job name, status, `waitDuration` (backlog), `attemptsMade`/`maxAttempts`, duration, failures                                                                                                                                                                       | jobs page                          |
+| F7  | **Scheduled jobs**                  | `@Cron` / `@Interval` / `@Timeout` runs as jobs                                                                                                                                                                                                                                | jobs page                          |
+| F8  | **Runtime metrics**                 | memory (rss/heap/total/external/arrayBuffers), CPU (user/system/percent), GC (count/duration by kind), event loop (latency/utilisation) as gauges per service instance                                                                                                         | profiler / runtime page            |
+| F9  | **Custom metrics**                  | counter / gauge (`additive`\|`ratio`\|`peak`) / summary (`q50/q95/q99/count/sum/min/max`), labelled series, series-limit UX                                                                                                                                                    | metrics page                       |
+| F10 | **SLOs / objectives**               | `@Objective()` declarations ingested, matched to routes, availability + latency + job-success SLIs, error budget remaining, 1 h/6 h/24 h/3 d burn rates, 7/14/28/30-day windows clipped to retention, "no traffic isn't failure", "declared in code" badge, hourly restatement | SLO page                           |
+| F11 | **Alerts**                          | rules on error rate / p95 / throughput / error count, thresholds + windows, channels (webhook, Slack-compatible, email), history, mute                                                                                                                                         | alerts page                        |
+| F12 | **Drop filters**                    | server-side discard rules on `http.route`, `http.url`, operation, release — applied at ingest before storage                                                                                                                                                                   | settings                           |
+| F13 | **Releases**                        | `serviceVersion` timeline, regression detection (error/латency vs previous release), affected-error attribution, deploy markers                                                                                                                                                | releases page                      |
+| F14 | **Custom operation IDs**            | honour `a.dop` / `TracerService.setOperationId`, cap of 100 live names per project per 30 days, fall back to route when over                                                                                                                                                   | operations                         |
+| F15 | **Source context**                  | render the captured `linesOfContext` around each stack frame, with the frame highlighted                                                                                                                                                                                       | error detail                       |
+| F16 | **Request capture**                 | headers/body captured for failed or slow requests, exactly as the SDK redacts them                                                                                                                                                                                             | trace detail                       |
+| F17 | **API keys**                        | app key/secret pairs per project, issue once (secret shown once), revoke, rotate — and the `/link` device-code flow that makes `npx @nestjs/observe link` work against us, returning the project/application identity the CLI prints and wires                                 | settings, `/link`                  |
+| F18 | **Projects / environments / teams** | a project scopes applications and members; env is a tag dimension                                                                                                                                                                                                              | settings                           |
+| F19 | **Retention**                       | configurable per data class (traces / logs / metrics), enforced by a rollup + prune job; **operator config, not a plan**                                                                                                                                                       | settings                           |
+| F21 | **Auth**                            | first-run admin bootstrap, sessions, optional OIDC, per-role permissions                                                                                                                                                                                                       | login, settings                    |
+| F22 | **Self-observability**              | ingest lag, batch size, drops, 400-repair rate, storage size, query latency                                                                                                                                                                                                    | `/admin/health`                    |
 
 ### 3.2 Removed — explicitly out of scope
 
-| Surface | Why removed | Consequence |
-|---|---|---|
-| Pricing / plans / tiers | the point of self-hosting | none |
-| Billing, invoices, Stripe, payment method | ditto | none |
-| Monthly event allowance / metering / overage | ditto | **the agent's `degraded` reply is always false**; no `OveragePauseReason`, no spike protection, no `notable` trimming |
-| Quota / usage banners & upgrade prompts | ditto | — |
-| Seat counting | ditto | unlimited members |
-| Free-tier pacing (`paced`) and reduced ingest (`reduced`) | ditto | — |
-| `trimmed` spans on a "paying" account | ditto | — |
-| Trial / expired-account states | ditto | — |
-| MCP server + `mcp-tokens` | out of scope by decision — the dashboard and the JSON API are the interface | no `/mcp` route, no token page |
+| Surface                                                   | Why removed                                                                 | Consequence                                                                                                           |
+| --------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Pricing / plans / tiers                                   | the point of self-hosting                                                   | none                                                                                                                  |
+| Billing, invoices, Stripe, payment method                 | ditto                                                                       | none                                                                                                                  |
+| Monthly event allowance / metering / overage              | ditto                                                                       | **the agent's `degraded` reply is always false**; no `OveragePauseReason`, no spike protection, no `notable` trimming |
+| Quota / usage banners & upgrade prompts                   | ditto                                                                       | —                                                                                                                     |
+| Seat counting                                             | ditto                                                                       | unlimited members                                                                                                     |
+| Free-tier pacing (`paced`) and reduced ingest (`reduced`) | ditto                                                                       | —                                                                                                                     |
+| `trimmed` spans on a "paying" account                     | ditto                                                                       | —                                                                                                                     |
+| Trial / expired-account states                            | ditto                                                                       | —                                                                                                                     |
+| MCP server + `mcp-tokens`                                 | out of scope by decision — the dashboard and the JSON API are the interface | no `/mcp` route, no token page                                                                                        |
 
-Deleting these also deletes a surprising amount of *ingest* complexity the SDK
+Deleting these also deletes a surprising amount of _ingest_ complexity the SDK
 expects the backend to have (`isNotableSnapshot`, `isServerErrorSnapshot`,
 `countTraceNodes` mirrors, the 5-minute degraded TTL handshake). We implement
 `{"degraded":false}` and move on.
+
+**Plan-gated upstream features are kept ungated.** SLOs, for example, are sold
+on Scale and Enterprise. That gate is commercial, not a runtime cost, so it is
+not a feature to remove: a self-hosted install gets SLOs, error budgets and burn
+rates with no plan, seat, quota or usage check in front of them.
 
 ### 3.3 Feature parity matrix (build order)
 
 Legend: **P0** must ship in v0.1 · **P1** v0.2 · **P2** v0.3+ · — removed
 
-| Feature | v0.1 | v0.2 | v0.3 |
-|---|---|---|---|
-| F1 applications | P0 | | |
-| F2 operations | P0 | | |
-| F3 traces + waterfall | P0 | | |
-| F4 errors + grouping | P0 | resolve/ignore P1 | |
-| F5 logs | | P0 | |
-| F6/F7 jobs | | P0 | |
-| F8 runtime metrics | | P0 | |
-| F9 custom metrics | | P0 | |
-| F13 releases | | P0 | |
-| F17 API keys + `/link` | P0 | | |
-| F21 auth | P0 | OIDC P2 | |
-| F12 drop filters | | P1 | |
-| F10 SLOs | | P1 | |
-| F11 alerts | | P1 | |
-| F19 retention | P0 (fixed default) | P1 (config) | |
-| F14 custom op IDs | | P0 | |
-| F15/F16 source ctx + capture | P0 (render) | | |
-| F18 projects/envs | P0 (single project) | multi P1 | |
-| F22 self-observability | P0 (`/health`) | P1 | |
-| Pricing & billing | — | — | — |
+| Feature                      | v0.1                | v0.2              | v0.3 |
+| ---------------------------- | ------------------- | ----------------- | ---- |
+| F1 applications              | P0                  |                   |      |
+| F2 operations                | P0                  |                   |      |
+| F3 traces + waterfall        | P0                  |                   |      |
+| F4 errors + grouping         | P0                  | resolve/ignore P1 |      |
+| F5 logs                      |                     | P0                |      |
+| F6/F7 jobs                   |                     | P0                |      |
+| F8 runtime metrics           |                     | P0                |      |
+| F9 custom metrics            |                     | P0                |      |
+| F13 releases                 |                     | P0                |      |
+| F17 API keys + `/link`       | P0                  |                   |      |
+| F21 auth                     | P0                  | OIDC P2           |      |
+| F12 drop filters             |                     | P1                |      |
+| F10 SLOs                     |                     | P1                |      |
+| F11 alerts                   |                     | P1                |      |
+| F19 retention                | P0 (fixed default)  | P1 (config)       |      |
+| F14 custom op IDs            |                     | P0                |      |
+| F15/F16 source ctx + capture | P0 (render)         |                   |      |
+| F18 projects/envs            | P0 (single project) | multi P1          |      |
+| F22 self-observability       | P0 (`/health`)      | P1                |      |
+| Pricing & billing            | —                   | —                 | —    |
 
 ---
 
@@ -208,7 +213,7 @@ deduplicates them and no handler reaches for a global:
 
 - **`ingestApp`** — mounted before anything else, no session middleware, no
   cookies, no CORS work, gzip decode only. Its whole job is "accept bytes
-  fast". Runs on its own port (default `:4319`) so it can be exposed
+  fast". Runs on its own port (default `:4320`) so it can be exposed
   separately from the dashboard (`:4320`).
 - **`apiApp`** — the dashboard JSON API + the static SPA.
 - **`workerApp`** — in-process: timer-driven rollups, SLO evaluation, alert
@@ -217,7 +222,7 @@ deduplicates them and no handler reaches for a global:
 
 Why two ports: ingest is internet-facing, the dashboard usually is not. Splitting
 them means "expose the dashboard only on the VPN" is a deployment fact, not a
-proxy config. They can also be collapsed onto one port (`OBSERVE_SINGLE_PORT=1`).
+proxy config. They can also be collapsed onto one port (``).
 
 ### Why Bun + Elysia specifically
 
@@ -346,6 +351,8 @@ GET    /api/v1/applications/:id/runtime?metric&from&to&interval
 GET    /api/v1/applications/:id/metrics
 GET    /api/v1/applications/:id/metrics/:name/series?labels&from&to
 GET    /api/v1/applications/:id/slos
+POST   /api/v1/applications/:id/slos            { kind, target, underMs?, windowDays?, operationId? }
+DELETE /api/v1/applications/:id/slos/:sloId
 GET    /api/v1/applications/:id/releases
 GET    /api/v1/projects/:id/alerts,  /drop-filters, /credentials, /retention
 GET    /api/v1/health                  liveness + ingest counters
@@ -398,14 +405,70 @@ compiled binary.
 
 ---
 
+### 7.1 Projects — one today, and what "many" would cost
+
+**Today the install has exactly one project.** First-run setup inserts
+`(00000000-0000-7000-8000-000000000000, "Default", "default")`, every scoped
+table already carries `project_id`, and nothing in the UI can create, rename or
+switch one. That is why the sidebar header no longer says `DASHBOARD › PROJECT`:
+a breadcrumb with a single level is a lie about structure, and a switcher with
+one option is a dead control. The header is now the product mark; it is also
+where a project switcher would go.
+
+What is already in place (no migration needed to start):
+
+- `application.project_id`, `app_credential.project_id`, `slo.project_id`,
+  `alert_rule.project_id`, `drop_filter.project_id`, `retention_policy.project_id`,
+- `unique(project_id, service_id)` — the same `serviceId` can exist in two
+  projects without colliding,
+- credentials are project-scoped, which is why one API key pair links many
+  applications; the CLI already prints `projectName` because the hosted reply
+  carries it,
+- `project_member(project_id, user_id, role)` with `read|write|admin`, and
+  `team`/`team_member` above it — both unused so far.
+
+What building it would actually cost, in dependency order:
+
+1. **Scope resolution.** `/projects/:slug/…` in the URL (or a header for the API),
+   a `project` dependency in every module, and a 301 from the unscoped paths to
+   the default project so existing bookmarks and the `/link` device-code flow
+   keep working.
+2. **Project switcher** in the sidebar header, persisting the last choice; the
+   application switcher then lists only that project's applications.
+3. **Ingest** resolves the project from the credential instead of the
+   hard-coded default (it already reads the credential row — this is a lookup
+   change, not a new pipeline).
+4. **Per-project retention, SLOs, alerts, drop filters** — the columns exist and
+   the admin `prune` command already takes a data class; it would take a project.
+5. **Member enforcement** — the real work. Every query becomes project-scoped,
+   and `read` must be denied writes while `admin` manages keys and members. The
+   macros are stubs today; this is where the days go.
+6. **CLI + lifecycle** — `admin project {create,list,rename,members}`, and a
+   deliberate answer for "move this application to another project" (the honest
+   answer for v1: re-link it; telemetry does not migrate, it keeps the old
+   application row and its history under the old project).
+
+Trigger to build it: the first operator who needs two teams' telemetry isolated
+in one collector — separate keys, separate retention, separate members. Until
+then environments stay a **tag** (`tg.environment`), which is what the SDK sends
+and what the cards already group by.
+
+Stay out of: teams as a UI surface, plans, seats, project-level quotas. Removed
+by design (§3.2) — this is grouping, not tenancy billing.
+
 ## 8. Milestones
 
-| Milestone | Content | Exit criteria |
-|---|---|---|
-| **M0 — skeleton** | monorepo, Elysia ingest route accepting gzip batches, strict validation against `TELEMETRY_BATCH`, `{degraded:false}` reply, Postgres/Drizzle write of `execution`+`span`, `/health` | a real Nest app with the vendored SDK, `OBSERVE_ENDPOINT=http://localhost:4319`, produces rows we can `SELECT` |
-| **M1 — v0.1 "useful"** | auth, applications, operations, executions, traces, errors (grouping + source context), API keys, `/cli-link` device flow, minimal UI (overview, trace waterfall, error list) | `npx @nestjs/observe link` works against us; demo-scale data navigable |
-| **M2 — v0.2 "complete telemetry"** | logs, jobs, runtime metrics, custom metrics, releases, retention config, custom op IDs, Postgres adapter | parity with the hosted dashboard's daily-driver pages |
-| **M3 — v0.3 "SLOs & alerts"** | objectives ingestion + budgets, alerts + channels, drop filters, multi-project/envs | `@Objective()` declarations round-trip; an alert fires on a planted error |
+| Milestone                          | Content                                                                                                                                                                              | Exit criteria                                                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| **M0 — skeleton**                  | monorepo, Elysia ingest route accepting gzip batches, strict validation against `TELEMETRY_BATCH`, `{degraded:false}` reply, Postgres/Drizzle write of `execution`+`span`, `/health` | a real Nest app with the vendored SDK, `OBSERVE_ENDPOINT=http://localhost:4320`, produces rows we can `SELECT` |
+| **M1 — v0.1 "useful"**             | auth, applications, operations, executions, traces, errors (grouping + source context), API keys, `/cli-link` device flow, minimal UI (overview, trace waterfall, error list)        | `npx @nestjs/observe link` works against us; demo-scale data navigable                                         |
+| **M2 — v0.2 "complete telemetry"** | logs, jobs, runtime metrics, custom metrics, releases, retention config, custom op IDs, Postgres adapter                                                                             | parity with the hosted dashboard's daily-driver pages                                                          |
+| **M3 — v0.3 "SLOs & alerts"**      | objectives ingestion + budgets, alerts + channels, drop filters, multi-project/envs                                                                                                  | `@Objective()` declarations round-trip; an alert fires on a planted error                                      |
+
+The SLO half of M3 is done (`GET/POST/DELETE /applications/:id/slos`, the SLO page,
+budgets/burn/no-data/retention clipping — see [`COVERAGE.md`](COVERAGE.md)). What
+remains is the alert evaluator, its channels and history, plus burn-rate policies
+as one rule type on top of it.
 | **M4 — hardening** | rollups, load test (5k ev/s), backup/restore, upgrades N-2, SBOM, docs site | 24h soak, restore drill passes |
 
 ---
@@ -417,14 +480,18 @@ Three separate versions, bumped independently:
 1. **App version** — SemVer, `0.y.z` until the dashboard is feature-complete.
 2. **Ingest API version** — pinned to the SDK version range we implement
    (`@nestjs/observe >=0.3.17 <0.4.0`). Documented in `/health`, checked by a
-   conformance test that validates our DTOs with the *vendored*
+   conformance test that validates our DTOs with the _vendored_
    `validateTelemetryPayload`.
 3. **Schema version** — integer in `_migration`; the app refuses to start on a
    schema newer than it knows, and support for migrating from N-2.
 
 Compatibility invariants: never 400 a batch the vendored contract accepts;
 never return `degraded: true`; keep the four `/cli-link` + `/applications`
-paths; treat unknown span tags as opaque. See
+paths; treat unknown span tags as opaque; and make the `link` reply carry the
+identity the CLI prints (`projectName`, `applicationName`). The CLI derives the
+`serviceId` it wires from `applicationName` with `serviceIdFor`, so the
+collector stores that same slug — a raw package name on our row would split one
+app into two on the first batch. See
 [`spec/release-pipeline.md`](spec/release-pipeline.md) §Versioning.
 
 ---
@@ -452,23 +519,24 @@ Details, versioning rules, workflow YAML and the upgrade policy:
 
 ## 11. Risks
 
-| Risk | Impact | Mitigation |
-|---|---|---|
-| SDK wire format changes without a version bump | silent 400s, data loss | conformance test imports the vendored contract; CI fails when a subtree bump changes it |
-| Hosted dashboard has features we cannot see (no public API) | parity gaps | REA-derived inventory, explicitly flagged `unknown`; ship on our own IA where unknown |
-| Ingest write amplification at volume (80+ spans/request) | Postgres under pressure | bulk `values([...])` inserts, pre-aggregated rollups, per-app sampling as config, partition + `COPY` path in M1, load test in M4 |
-| Span volume (80+ children/request) | storage blow-up | server-side `spanCollapse`-aware storage, per-app sampling as config, day partitions + rollups |
-| Removal of quota logic surprises the agent | degraded handshake misread | always `degraded:false`; recorded in the conformance test |
-| License/attribution | — | SDK is MIT: keep its copyright notice in `NOTICE`, never re-license SDK code |
+| Risk                                                        | Impact                     | Mitigation                                                                                                                       |
+| ----------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| SDK wire format changes without a version bump              | silent 400s, data loss     | conformance test imports the vendored contract; CI fails when a subtree bump changes it                                          |
+| Hosted dashboard has features we cannot see (no public API) | parity gaps                | REA-derived inventory, explicitly flagged `unknown`; ship on our own IA where unknown                                            |
+| Ingest write amplification at volume (80+ spans/request)    | Postgres under pressure    | bulk `values([...])` inserts, pre-aggregated rollups, per-app sampling as config, partition + `COPY` path in M1, load test in M4 |
+| Span volume (80+ children/request)                          | storage blow-up            | server-side `spanCollapse`-aware storage, per-app sampling as config, day partitions + rollups                                   |
+| Removal of quota logic surprises the agent                  | degraded handshake misread | always `degraded:false`; recorded in the conformance test                                                                        |
+| License/attribution                                         | —                          | SDK is MIT: keep its copyright notice in `NOTICE`, never re-license SDK code                                                     |
 
 ---
 
 ## 12. Open questions
 
 1. Multi-tenancy: single project per install (simple) vs many (matches hosted)?
-   Proposal: schema supports many, UI defaults to one until M3.
+   Proposal: schema supports many, UI defaults to one until M3. The scoping work
+   is written up in §7.1 — build it when a second team needs isolation, not before.
 2. Do we implement `errors-only`/`paced` at all? Proposal: no — but keep the
-   *shape* behind a flag so a future "operator pause" feature can reuse it.
+   _shape_ behind a flag so a future "operator pause" feature can reuse it.
 3. Auth default: local users only, or OIDC-first? Proposal: local first-run
    bootstrap, OIDC in M4.
 4. Do we accept unauthenticated ingest by default? Proposal: yes when bound to

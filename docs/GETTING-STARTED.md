@@ -38,25 +38,28 @@ export OBSERVE_DATABASE_URL=postgres://user:pass@host:5432/observe
 Migrations run at boot. To apply them separately (a release job, say):
 
 ```bash
-bun run --cwd apps/server db:migrate
+bun run db:migrate
 ```
 
 ## 3. Run it
 
 ```bash
-bun dev          # collector: ingest :4319, dashboard :4320
-bun dev:web      # optional: the SPA on :5173 with hot reload, proxying /api to :4320
+bun dev          # collector + dashboard + SPA, all on :4320
 ```
 
-With `bun dev:web` you browse `http://localhost:5173`; otherwise the server serves
-the built SPA from `apps/web/dist` at `http://localhost:4320`.
+`bun dev` is `bun --hot src/server/index.ts`. Bun's Fullstack Dev Server compiles
+`public/index.tsx` and `public/styles.css` on demand and reloads them in place, so
+there is no separate web dev server and no `:5173`: browse
+`http://localhost:4320` and you are looking at the app the collector serves in
+production.
 
-**One port instead?** `OBSERVE_SINGLE_PORT=1 bun dev` puts ingest and the
-dashboard both on `:4320` — the usual setup behind one reverse proxy.
+**One port, no reverse-proxy requirement.** Ingest (`/applications/telemetry`,
+`/cli-link/*`), the query API (`/api/v1/*`) and the dashboard are one origin, so
+`OBSERVE_ENDPOINT` and the URL in your browser are the same host.
 
 ## 4. First-run setup
 
-Open **http://localhost:4320** (or `:5173`). There is no account yet, so you get
+Open **http://localhost:4320**. There is no account yet, so you get
 the setup screen rather than a login:
 
 1. instance name, your email, a password of 10+ characters
@@ -100,7 +103,7 @@ app.enableShutdownHooks();   // without this the final flush never happens
 ```
 
 ```bash
-OBSERVE_ENDPOINT=http://localhost:4319 bun run start
+OBSERVE_ENDPOINT=http://localhost:4320 bun run start
 ```
 
 No key pair needed: with `appKey`/`appSecret` unset the SDK sends without
@@ -108,7 +111,7 @@ credential headers, and the collector accepts that by default
 (`OBSERVE_ALLOW_ANONYMOUS_INGEST=1`). You will see this in the app's log:
 
 ```
-[ObserveAgentWorker] Observe is connected: http://localhost:4319 accepted this app's first batch.
+[ObserveAgentWorker] Observe is connected: http://localhost:4320 accepted this app's first batch.
 ```
 
 ### With a real key pair instead
@@ -116,13 +119,18 @@ credential headers, and the collector accepts that by default
 Keys are scoped to a **project**, and the `link` flow issues them:
 
 ```bash
-OBSERVE_ENDPOINT=http://localhost:4319 npx @nestjs/observe link
+OBSERVE_ENDPOINT=http://localhost:4320 npx @nestjs/observe link
 ```
 
-It prints a code; type it at `http://localhost:4320/#/link` (the
+It prints a code; type it at `http://localhost:4320/link` (the
 verification URL it prints), approve it, and the CLI writes `OBSERVE_APP_KEY` /
 `OBSERVE_APP_SECRET` into the app's `.env` and wires `--env-file` into its start
-scripts. Then turn anonymous ingest off:
+scripts. It should end with the identity it linked to — `Linked to my-app in
+Default.` If the names are `undefined`, the collector answered the poll without
+the project/application identity; if the app then shows up twice in Overview, the
+`serviceId` the CLI wired does not match the one the collector stored (the
+derivation is the SDK's own: lower-cased, scoped `@scope/name` reduced to
+`name`). Then turn anonymous ingest off:
 
 ```bash
 OBSERVE_ALLOW_ANONYMOUS_INGEST=0 bun dev
@@ -144,14 +152,14 @@ There is a script that does the whole loop — traffic, flush, read back:
 
 ```bash
 ./scripts/e2e-nest.sh                    # assumes :3001 and :4320
-APP=http://localhost:3001 COLLECTOR=http://localhost:4319 ./scripts/e2e-nest.sh
+APP=http://localhost:3001 COLLECTOR=http://localhost:4320 ./scripts/e2e-nest.sh
 ```
 
 ## 7. Run it for real
 
 ```bash
 docker run -d --name observe \
-  -p 4319:4319 -p 4320:4320 \
+  -p 4320:4320 \
   -e OBSERVE_DATABASE_URL=postgres://user:pass@db:5432/observe \
   -e OBSERVE_ADMIN_EMAIL=ops@example.com \
   -e OBSERVE_ADMIN_PASSWORD='a long passphrase' \
@@ -160,11 +168,11 @@ docker run -d --name observe \
 
 | You should know | |
 |---|---|
-| **Ports** | `4319` ingest (give this to your apps), `4320` dashboard (keep it private) |
+| **Ports** | one port, `4320`: ingest, query API and dashboard on the same origin |
 | **Backup** | one database: `pg_dump` it. Nothing else holds state |
 | **Upgrade** | pull and restart; migrations run at boot; supported from the two previous minor versions |
 | **Downgrade** | refused — the server will not start on a schema newer than it understands |
-| **Locked out?** | `docker exec observe bun /app/server/index.js admin reset-password --email you@example.com` |
+| **Locked out?** | `docker exec observe /app/nestjs-openobserve admin reset-password --email you@example.com` |
 | **Disk** | retention is yours to set: `retention.traces`/`logs`/`metrics` days, then `admin prune` |
 | **Ingest is public** | unless you set `OBSERVE_ALLOW_ANONYMOUS_INGEST=0` and issue keys — see `docs/SELF-HOSTED.md` |
 
@@ -175,7 +183,7 @@ docker run -d --name observe \
 | Symptom | Cause |
 |---|---|
 | `setup required no` on a fresh DB | the `drizzle` schema survived a `public` reset — `DROP SCHEMA public, drizzle CASCADE` |
-| Agent logs "Could not reach the collector" | it is pointed at `:4320` while the collector is two-listener; use `:4319` |
+| Agent logs "Could not reach the collector" | it is pointed at the wrong port or host; the collector listens on `:4320` only |
 | Agent logs "Telemetry rejected (401)" | keys are set but wrong/revoked; unset them or re-run `link` |
 | Dashboard is empty but `/health` shows batches | you are looking at a different project/app filter; check **Overview** for the `serviceId` |
 | `too many clients already` | several dev servers share one Postgres; `docker compose restart postgres` or raise `max_connections` |
