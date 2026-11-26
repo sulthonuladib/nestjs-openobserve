@@ -19,11 +19,15 @@ env:
   # Postgres for the integration paths. The server needs nothing else: no Redis,
   # no object store, no queue.
   OBSERVE_DATABASE_URL: postgres://observe:observe@localhost:5432/observe
+  # test/api truncates every table in beforeEach, so it insists on its own
+  # database whose name ends in _test. It reads only this variable, never
+  # OBSERVE_DATABASE_URL. Created in a step below.
+  OBSERVE_TEST_DATABASE_URL: postgres://observe:observe@localhost:5432/observe_test
   BUN_VERSION: 1.4.3
 
 jobs:
   test:
-    name: test (bun ${{ matrix.bun }})
+    name: test (postgres ${{ matrix.postgres }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -58,6 +62,13 @@ jobs:
 
       - name: Typecheck
         run: bun run typecheck
+
+      # The service container only creates POSTGRES_DB=observe; the API suite
+      # needs its own throwaway database. CREATE DATABASE cannot run in a
+      # transaction, hence a single statement. Its schema is migrated by the
+      # suite itself.
+      - name: Create test database
+        run: psql "${{ env.OBSERVE_DATABASE_URL }}" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE observe_test'
 
       - name: Unit + conformance tests
         run: bun run test
