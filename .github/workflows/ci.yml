@@ -76,8 +76,10 @@ jobs:
       - name: Apply migrations
         run: bun run db:migrate
 
+      # Nothing else is listening in CI; --spawn starts its own server on a
+      # temp port against OBSERVE_DATABASE_URL, after truncating it.
       - name: End-to-end ingest round trip
-        run: bun run scripts/smoke.ts
+        run: bun run scripts/smoke.ts --spawn
 
   # The vendored gateway between our repo and @nestjs/observe is a git subtree.
   # If it is out of date the port may be silently behind: report it, do not fail
