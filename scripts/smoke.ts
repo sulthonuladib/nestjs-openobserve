@@ -12,8 +12,22 @@ interface Json {
   [key: string]: any;
 }
 
-const fetchJson = async (url: string, init?: RequestInit): Promise<Json> =>
-  (await (await fetch(url, init)).json()) as Json;
+// `/api/v1` requires a session; `/api/v1/auth/setup` creates the admin on a
+// fresh instance and sets this cookie. Captured by setupSession().
+let sessionCookie: string | undefined;
+
+const fetchJson = async (url: string, init?: RequestInit): Promise<Json> => {
+  const headers = new Headers(init?.headers);
+  if (sessionCookie && !headers.has("cookie")) {
+    headers.set("cookie", `observe_session=${sessionCookie}`);
+  }
+  const response = await fetch(url, { ...init, headers });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`${init?.method ?? "GET"} ${url} -> ${response.status}: ${text}`);
+  }
+  return JSON.parse(text) as Json;
+};
 
 const spawn = process.argv.includes("--spawn");
 const port = Number(process.env.SMOKE_PORT ?? 4399);
@@ -35,6 +49,30 @@ async function waitForHealth(): Promise<void> {
     await Bun.sleep(100);
   }
   throw new Error(`server did not become healthy at ${base}`);
+}
+
+/**
+ * `/api/v1` is always behind `requireUser`. On a freshly spawned server no
+ * user exists, so first-run setup creates the admin and hands back a session
+ * cookie. (Ingest itself is anonymous by default; only the query API isn't.)
+ */
+async function setupSession(): Promise<void> {
+  const response = await fetch(`${base}/api/v1/auth/setup`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      email: "smoke@example.com",
+      password: "smoke-Truffle-42-quax",
+      name: "Smoke",
+    }),
+  });
+  const body = await response.text();
+  if (response.status !== 201) {
+    throw new Error(`auth setup failed: ${response.status} ${body}`);
+  }
+  const setCookie = response.headers.get("set-cookie") ?? "";
+  sessionCookie = /(?:^|;\s*|,\s*)observe_session=([^;,]+)/.exec(setCookie)?.[1];
+  if (!sessionCookie) throw new Error(`no session cookie from setup: ${setCookie}`);
 }
 
 if (spawn) {
@@ -64,6 +102,8 @@ if (spawn) {
   await waitForHealth();
 }
 
+await setupSession();
+
 try {
   const batch = sampleBatch();
   const gzipped = Bun.gzipSync(new TextEncoder().encode(JSON.stringify(batch)));
@@ -86,7 +126,7 @@ try {
   if (!appId) throw new Error("no application created");
 
   const executions = await fetchJson(
-    `${base}/api/v1/applications/${appId}/executions?limit=10`,
+    `${base}/api/v1/telemetry/executions?applicationId=${appId}&limit=10`,
   );
   console.log("executions", executions.items.length, "nextCursor", executions.nextCursor);
 
@@ -101,11 +141,11 @@ try {
     detail.execution.operation?.operationId,
   );
 
-  const errors = await fetchJson(`${base}/api/v1/applications/${appId}/errors`);
-  console.log("errors", errors.items.map((item: { message: string }) => item.message));
+  const errors = await fetchJson(`${base}/api/v1/telemetry/errors?applicationId=${appId}`);
+  console.log("errors", (errors as unknown as { message: string }[]).map((item) => item.message));
 
   const operations = await fetchJson(
-    `${base}/api/v1/applications/${appId}/operations`,
+    `${base}/api/v1/telemetry/operations?applicationId=${appId}`,
   );
   console.log("operations", operations);
 
@@ -116,12 +156,14 @@ try {
     headers: { "content-type": "application/json", "content-encoding": "gzip" },
     body: Bun.gzipSync(new TextEncoder().encode(JSON.stringify(batch))),
   });
-  const errorsAgain = await fetchJson(`${base}/api/v1/applications/${appId}/errors`);
+  const errorsAgain = (await fetchJson(
+    `${base}/api/v1/telemetry/errors?applicationId=${appId}`,
+  )) as unknown as { occurrences: number }[];
   console.log(
     "error groups after replay",
-    errorsAgain.items.length,
+    errorsAgain.length,
     "occurrences",
-    errorsAgain.items[0]?.occurrences,
+    errorsAgain[0]?.occurrences,
   );
 } finally {
   server?.kill();
